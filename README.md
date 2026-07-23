@@ -1,1 +1,0 @@
-# TRIZ_RESULT
