@@ -4,7 +4,6 @@ import plotly.graph_objects as go
 
 from data_utils import load_all_data, build_sales_kpi, MONTH_ORDER
 
-st.set_page_config(page_title="영업 지표", page_icon="📊", layout="wide")
 st.title("📊 영업 지표 (월별 전체 실적)")
 st.caption("'ALL데이터' 시트가 포함된 엑셀 파일을 업로드하면 자동으로 집계됩니다.")
 
