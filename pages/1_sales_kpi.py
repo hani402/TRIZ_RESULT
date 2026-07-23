@@ -31,25 +31,54 @@ for col in display.columns:
         lambda row: f"{int(row[col]):,}" if row.name == "진행 건수" else f"{int(row[col]):,}원",
         axis=1,
     )
-st.dataframe(display, use_container_width=True)
+
+table_html = """
+<style>
+.kpi-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.kpi-table th, .kpi-table td { text-align: center; padding: 8px 10px; border: 1px solid #444; }
+.kpi-table thead th { background-color: #262730; font-weight: 600; }
+.kpi-table tbody th { background-color: #1a1c22; font-weight: 600; text-align: center; }
+.kpi-table td.all-col { background-color: #2a2d38; font-weight: 600; }
+</style>
+<table class="kpi-table">
+<thead><tr><th>구분</th>"""
+for col in display.columns:
+    table_html += f"<th>{col}</th>"
+table_html += "</tr></thead><tbody>"
+for idx, row in display.iterrows():
+    table_html += f"<tr><th>{idx}</th>"
+    for col in display.columns:
+        cls = ' class="all-col"' if col == "ALL" else ""
+        table_html += f"<td{cls}>{row[col]}</td>"
+    table_html += "</tr>"
+table_html += "</tbody></table>"
+
+st.markdown(table_html, unsafe_allow_html=True)
 
 # ---- 차트 ----
 st.subheader("월별 추이")
 months = MONTH_ORDER
-col1, col2 = st.columns(2)
 
-with col1:
-    fig1 = go.Figure()
-    fig1.add_bar(x=months, y=[kpi.loc["매출 결과", m] for m in months], name="매출 결과")
-    fig1.add_bar(x=months, y=[kpi.loc["GP 결과", m] for m in months], name="GP 결과")
-    fig1.update_layout(title="매출 / GP 결과", barmode="group", height=380)
-    st.plotly_chart(fig1, use_container_width=True)
+from plotly.subplots import make_subplots
 
-with col2:
-    fig2 = go.Figure()
-    fig2.add_bar(x=months, y=[kpi.loc["진행 건수", m] for m in months], name="진행 건수")
-    fig2.update_layout(title="진행 건수", height=380)
-    st.plotly_chart(fig2, use_container_width=True)
+fig = make_subplots(specs=[[{"secondary_y": True}]])
+fig.add_bar(
+    x=months, y=[kpi.loc["매출 결과", m] for m in months],
+    name="매출 결과", secondary_y=False,
+)
+fig.add_bar(
+    x=months, y=[kpi.loc["GP 결과", m] for m in months],
+    name="GP 결과", secondary_y=False,
+)
+fig.add_scatter(
+    x=months, y=[kpi.loc["진행 건수", m] for m in months],
+    name="진행 건수", mode="lines+markers", secondary_y=True,
+    line=dict(width=3),
+)
+fig.update_layout(title="매출 · GP · 진행 건수", barmode="group", height=460)
+fig.update_yaxes(title_text="금액 (원)", secondary_y=False)
+fig.update_yaxes(title_text="진행 건수", secondary_y=True)
+st.plotly_chart(fig, use_container_width=True)
 
 # ---- 다운로드 ----
 st.subheader("엑셀로 다운로드")
