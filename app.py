@@ -10,7 +10,7 @@ st.divider()
 
 st.subheader("📊 영업 지표")
 st.write("월별 진행 건수 · 매출 결과 · GP 결과를 자동으로 집계해서 보여드려요.")
-st.page_link("pages/1_영업_지표.py", label="바로가기 →", icon="📊")
+st.page_link("pages/1_sales_kpi.py", label="바로가기 →", icon="📊")
 
 st.divider()
 st.caption("다음 순서로 매니저별 · 셀러별/셀러상품별 · 상품별 뷰가 추가될 예정입니다.")
