@@ -35,10 +35,30 @@ for col in display.columns:
 table_html = """
 <style>
 .kpi-table { border-collapse: collapse; width: 100%; font-size: 14px; }
-.kpi-table th, .kpi-table td { text-align: center; padding: 8px 10px; border: 1px solid #444; }
-.kpi-table thead th { background-color: #262730; font-weight: 600; }
-.kpi-table tbody th { background-color: #1a1c22; font-weight: 600; text-align: center; }
-.kpi-table td.all-col { background-color: #2a2d38; font-weight: 600; }
+.kpi-table th, .kpi-table td {
+    text-align: center !important;
+    padding: 10px 12px;
+    border: 1px solid #d9dce3;
+    color: #1f2937 !important;
+}
+.kpi-table thead th {
+    background-color: #1f2a44 !important;
+    color: #ffffff !important;
+    font-weight: 600;
+}
+.kpi-table tbody th {
+    background-color: #f3f4f8 !important;
+    color: #1f2937 !important;
+    font-weight: 600;
+    text-align: center !important;
+}
+.kpi-table tbody tr:nth-child(even) td:not(.all-col) { background-color: #fafafc !important; }
+.kpi-table tbody tr:nth-child(odd) td:not(.all-col) { background-color: #ffffff !important; }
+.kpi-table td.all-col {
+    background-color: #eef1fb !important;
+    color: #1f2937 !important;
+    font-weight: 700;
+}
 </style>
 <table class="kpi-table">
 <thead><tr><th>구분</th>"""
