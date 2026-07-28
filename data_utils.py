@@ -85,11 +85,21 @@ def build_sales_kpi(df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
+EXCLUDE_MANAGERS = {"봉석"}  # 오기입 등으로 제외해야 하는 담당자
+
+
 def get_managers(df: pd.DataFrame) -> list:
-    """ALL데이터의 '비고1'(담당자) 컬럼에서 담당자 목록 추출."""
+    """ALL데이터의 '비고1'(담당자) 컬럼에서 담당자 목록 추출 (제외 대상 필터링)."""
     vals = df["비고1"].dropna().astype(str).str.strip()
     vals = vals[vals != ""]
+    vals = vals[~vals.isin(EXCLUDE_MANAGERS)]
     return sorted(vals.unique().tolist())
+
+
+def get_active_months(df: pd.DataFrame) -> list:
+    """실제 결산 데이터가 존재하는 월만 순서대로 반환."""
+    present = set(df["월"].dropna().astype(str).str.strip().unique())
+    return [m for m in MONTH_ORDER if m in present]
 
 
 def build_manager_actuals(df: pd.DataFrame, managers: list) -> pd.DataFrame:
@@ -108,3 +118,42 @@ def build_manager_actuals(df: pd.DataFrame, managers: list) -> pd.DataFrame:
     result = pd.DataFrame(rows).set_index(["담당자", "지표"])
     result.insert(0, "합계", result[MONTH_ORDER].sum(axis=1))
     return result
+
+
+KPI_TARGETS_PATH = "data/kpi_targets.xlsx"
+
+
+def load_kpi_targets(managers: list, path: str = KPI_TARGETS_PATH):
+    """저장된 KPI 백데이터 파일을 불러와 (매출KPI, GP KPI) 데이터프레임 반환.
+    파일이 없거나 특정 담당자가 없으면 빈 값(NaN)으로 채움."""
+    import os
+    sales_df = pd.DataFrame(index=managers, columns=MONTH_ORDER, dtype="float64")
+    gp_df = pd.DataFrame(index=managers, columns=MONTH_ORDER, dtype="float64")
+
+    if os.path.exists(path):
+        try:
+            saved_sales = pd.read_excel(path, sheet_name="매출KPI", index_col=0)
+            saved_gp = pd.read_excel(path, sheet_name="GP KPI", index_col=0)
+            for m in managers:
+                if m in saved_sales.index:
+                    for month in MONTH_ORDER:
+                        if month in saved_sales.columns:
+                            sales_df.loc[m, month] = saved_sales.loc[m, month]
+                if m in saved_gp.index:
+                    for month in MONTH_ORDER:
+                        if month in saved_gp.columns:
+                            gp_df.loc[m, month] = saved_gp.loc[m, month]
+        except Exception:
+            pass
+
+    return sales_df, gp_df
+
+
+def save_kpi_targets_to_bytes(sales_df: pd.DataFrame, gp_df: pd.DataFrame) -> bytes:
+    """수정된 KPI 값을 엑셀 바이트로 변환 (다운로드용)."""
+    import io
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        sales_df.to_excel(writer, sheet_name="매출KPI")
+        gp_df.to_excel(writer, sheet_name="GP KPI")
+    return buf.getvalue()
