@@ -83,3 +83,28 @@ def build_sales_kpi(df: pd.DataFrame) -> pd.DataFrame:
     result = monthly.T
     result.insert(0, "ALL", result.sum(axis=1))
     return result
+
+
+def get_managers(df: pd.DataFrame) -> list:
+    """ALL데이터의 '비고1'(담당자) 컬럼에서 담당자 목록 추출."""
+    vals = df["비고1"].dropna().astype(str).str.strip()
+    vals = vals[vals != ""]
+    return sorted(vals.unique().tolist())
+
+
+def build_manager_actuals(df: pd.DataFrame, managers: list) -> pd.DataFrame:
+    """담당자별 월별 매출 결과 / GP 결과. index=(담당자, 지표), columns=월"""
+    rows = []
+    for manager in managers:
+        sub_m = df[df["비고1"].astype(str).str.strip() == manager]
+        rev_row = {"담당자": manager, "지표": "매출 결과"}
+        gp_row = {"담당자": manager, "지표": "GP 결과"}
+        for month in MONTH_ORDER:
+            sub = sub_m[sub_m["월"] == month]
+            rev_row[month] = sub["매출"].sum()
+            gp_row[month] = sub["트리즈GP"].sum()
+        rows.append(rev_row)
+        rows.append(gp_row)
+    result = pd.DataFrame(rows).set_index(["담당자", "지표"])
+    result.insert(0, "합계", result[MONTH_ORDER].sum(axis=1))
+    return result
