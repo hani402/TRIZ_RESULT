@@ -4,6 +4,7 @@ st.set_page_config(page_title="영업실 결산 대시보드", page_icon="📈",
 
 home_page = st.Page("home.py", title="홈", icon="🏠", default=True)
 sales_kpi_page = st.Page("pages/1_sales_kpi.py", title="영업 지표", icon="📊")
+manager_kpi_page = st.Page("pages/2_manager_kpi.py", title="매니저별 진척관리", icon="🧑‍💼")
 
-pg = st.navigation([home_page, sales_kpi_page])
+pg = st.navigation([home_page, sales_kpi_page, manager_kpi_page])
 pg.run()
