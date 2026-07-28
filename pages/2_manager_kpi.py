@@ -2,10 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from data_utils import load_all_data, get_managers, build_manager_actuals, MONTH_ORDER, QUARTER_MAP
+from data_utils import (
+    load_all_data, get_managers, get_active_months, build_manager_actuals,
+    load_kpi_targets, save_kpi_targets_to_bytes, MONTH_ORDER, QUARTER_MAP,
+)
 
 st.title("🧑‍💼 매니저별 진척관리")
-st.caption("'ALL데이터' 시트가 포함된 엑셀 파일을 업로드하면 담당자별 실적이 자동으로 집계됩니다. KPI 목표는 아래에서 직접 입력해주세요.")
+st.caption("'ALL데이터' 시트가 포함된 엑셀 파일을 업로드하면 담당자별 실적이 자동으로 집계됩니다.")
 
 uploaded = st.file_uploader("ALL데이터 엑셀 업로드 (.xlsx)", type=["xlsx"], key="manager_upload")
 
@@ -20,25 +23,23 @@ except ValueError as e:
     st.stop()
 
 managers = get_managers(df)
+active_months = get_active_months(df)
+
 if not managers:
     st.warning("담당자('비고1') 정보가 있는 데이터가 없어요.")
     st.stop()
 
 actuals = build_manager_actuals(df, managers)  # index=(담당자,지표), columns=합계+월
 
-# ---- KPI 목표 입력 ----
+# ---- KPI 목표 입력 (저장된 백데이터로 초기값 채움) ----
 st.subheader("① KPI 목표 입력")
-st.caption("담당자별 월 매출/GP 목표를 입력해주세요. 아직 목표가 없는 담당자는 비워두면 됩니다.")
+st.caption("담당자별 월 매출/GP 목표예요. 저장된 값이 자동으로 채워지며, 수정 후 아래 '저장' 버튼으로 백데이터 파일을 갱신할 수 있어요.")
 
 def _init_kpi_df(key, managers):
     if key not in st.session_state or set(st.session_state[key].index) != set(managers):
-        blank = pd.DataFrame(index=managers, columns=MONTH_ORDER, dtype="float64")
-        # 기존 값 있으면 이어받기
-        if key in st.session_state:
-            for m in managers:
-                if m in st.session_state[key].index:
-                    blank.loc[m] = st.session_state[key].loc[m]
-        st.session_state[key] = blank
+        saved_sales, saved_gp = load_kpi_targets(managers)
+        base = saved_sales if key == "manager_sales_kpi" else saved_gp
+        st.session_state[key] = base
     return st.session_state[key]
 
 sales_kpi_input = _init_kpi_df("manager_sales_kpi", managers)
@@ -60,8 +61,22 @@ with col_b:
     )
     st.session_state["manager_gp_kpi"] = edited_gp
 
+save_col1, save_col2 = st.columns([1, 3])
+with save_col1:
+    kpi_bytes = save_kpi_targets_to_bytes(edited_sales, edited_gp)
+    st.download_button(
+        "💾 KPI 목표 저장 (kpi_targets.xlsx)",
+        data=kpi_bytes,
+        file_name="kpi_targets.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+with save_col2:
+    st.caption("다운로드한 파일로 저장소의 `data/kpi_targets.xlsx`를 교체하면, 다음 접속부터 이 값이 기본으로 불러와져요.")
+
 # ---- 집계표 구성 ----
 st.subheader("② 매니저별 진척 현황")
+if len(active_months) < len(MONTH_ORDER):
+    st.caption(f"결산 데이터가 있는 월({', '.join(active_months)})만 표시하고 있어요. 나머지 월은 데이터가 들어오면 자동으로 나타나요.")
 
 def _fmt_money(v):
     if v is None or (isinstance(v, float) and np.isnan(v)):
@@ -79,10 +94,10 @@ def _safe_div(a, b):
     return a / b
 
 METRICS = ["매출 KPI", "GP KPI", "매출 결과", "GP 결과", "매출 달성률(%)", "GP 달성률(%)"]
-COLS = ["합계"] + MONTH_ORDER
+COLS = ["합계"] + active_months  # 화면 표시용 (비활성 월 숨김)
 
 
-def build_group_rows(name, sales_kpi_row, gp_kpi_row, rev_row, gp_row):
+def build_group_rows(sales_kpi_row, gp_kpi_row, rev_row, gp_row):
     rows = {}
     rows["매출 KPI"] = sales_kpi_row
     rows["GP KPI"] = gp_kpi_row
@@ -93,21 +108,34 @@ def build_group_rows(name, sales_kpi_row, gp_kpi_row, rev_row, gp_row):
     return rows
 
 
+def _kpi_value(edited_df, manager, col):
+    if col == "합계":
+        return edited_df.loc[manager, MONTH_ORDER].sum(skipna=True)
+    return edited_df.loc[manager, col]
+
+
 groups = []
 
 # 부서 총합
-total_sales_kpi = {c: edited_sales[MONTH_ORDER].sum(skipna=True).reindex(MONTH_ORDER).to_dict().get(c) if c != "합계" else edited_sales[MONTH_ORDER].sum(skipna=True).sum() for c in COLS}
-total_gp_kpi = {c: edited_gp[MONTH_ORDER].sum(skipna=True).reindex(MONTH_ORDER).to_dict().get(c) if c != "합계" else edited_gp[MONTH_ORDER].sum(skipna=True).sum() for c in COLS}
-total_rev = {c: (actuals.xs("매출 결과", level="지표")[c].sum() if c != "합계" else actuals.xs("매출 결과", level="지표")["합계"].sum()) for c in COLS}
-total_gp = {c: (actuals.xs("GP 결과", level="지표")[c].sum() if c != "합계" else actuals.xs("GP 결과", level="지표")["합계"].sum()) for c in COLS}
-groups.append(("부서 총합", build_group_rows("부서 총합", total_sales_kpi, total_gp_kpi, total_rev, total_gp)))
+total_sales_kpi = {c: sum((_kpi_value(edited_sales, m, c) or 0) for m in managers) for c in COLS}
+total_gp_kpi = {c: sum((_kpi_value(edited_gp, m, c) or 0) for m in managers) for c in COLS}
+total_rev = {c: (actuals.xs("매출 결과", level="지표")["합계"].sum() if c == "합계" else actuals.xs("매출 결과", level="지표")[c].sum()) for c in COLS}
+total_gp = {c: (actuals.xs("GP 결과", level="지표")["합계"].sum() if c == "합계" else actuals.xs("GP 결과", level="지표")[c].sum()) for c in COLS}
+groups.append(("부서 총합", build_group_rows(total_sales_kpi, total_gp_kpi, total_rev, total_gp)))
 
 for manager in managers:
-    sales_kpi_row = {c: (edited_sales.loc[manager, c] if c != "합계" else edited_sales.loc[manager, MONTH_ORDER].sum(skipna=True)) for c in COLS}
-    gp_kpi_row = {c: (edited_gp.loc[manager, c] if c != "합계" else edited_gp.loc[manager, MONTH_ORDER].sum(skipna=True)) for c in COLS}
+    sales_kpi_row = {c: _kpi_value(edited_sales, manager, c) for c in COLS}
+    gp_kpi_row = {c: _kpi_value(edited_gp, manager, c) for c in COLS}
     rev_row = {c: actuals.loc[(manager, "매출 결과"), c] for c in COLS}
     gp_row = {c: actuals.loc[(manager, "GP 결과"), c] for c in COLS}
-    groups.append((manager, build_group_rows(manager, sales_kpi_row, gp_kpi_row, rev_row, gp_row)))
+    groups.append((manager, build_group_rows(sales_kpi_row, gp_kpi_row, rev_row, gp_row)))
+
+# ---- 분기 헤더 구성 (활성 월만 그룹핑) ----
+quarter_groups = []
+for q in ["1Q", "2Q", "3Q", "4Q"]:
+    months_in_q = [m for m in active_months if QUARTER_MAP[m] == q]
+    if months_in_q:
+        quarter_groups.append((q, months_in_q))
 
 # ---- HTML 렌더링 ----
 html = """
@@ -146,12 +174,13 @@ html = """
 <thead>
 <tr>
 <th rowspan="2">담당자</th><th rowspan="2">구분</th><th rowspan="2">합계</th>
-<th colspan="3">1Q</th><th colspan="3">2Q</th><th colspan="3">3Q</th><th colspan="3">4Q</th>
-</tr>
-<tr>
 """
-for month in MONTH_ORDER:
-    html += f"<th>{month}</th>"
+for q, months_in_q in quarter_groups:
+    html += f'<th colspan="{len(months_in_q)}">{q}</th>'
+html += "</tr><tr>"
+for q, months_in_q in quarter_groups:
+    for month in months_in_q:
+        html += f"<th>{month}</th>"
 html += "</tr></thead><tbody>"
 
 for gname, rows in groups:
@@ -176,5 +205,3 @@ for gname, rows in groups:
 html += "</tbody></table>"
 
 st.markdown(html, unsafe_allow_html=True)
-
-st.caption("※ KPI 목표는 이 화면에서 입력한 값이 세션 동안 유지됩니다. 새로고침하거나 다른 사람이 열면 초기화되니, 정식 운영 전 저장 방식은 별도로 논의해요.")
