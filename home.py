@@ -13,4 +13,11 @@ sales_kpi_page = st.Page("pages/1_sales_kpi.py", title="영업 지표", icon="�
 st.page_link(sales_kpi_page, label="바로가기 →")
 
 st.divider()
-st.caption("다음 순서로 매니저별 · 셀러별/셀러상품별 · 상품별 뷰가 추가될 예정입니다.")
+
+st.subheader("🧑‍💼 매니저별 진척관리")
+st.write("담당자별 매출/GP 실적과 KPI 달성률을 확인해요.")
+manager_kpi_page = st.Page("pages/2_manager_kpi.py", title="매니저별 진척관리", icon="🧑‍💼")
+st.page_link(manager_kpi_page, label="바로가기 →")
+
+st.divider()
+st.caption("다음 순서로 셀러별/셀러상품별 · 상품별 뷰가 추가될 예정입니다.")
