@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-from data_utils import load_all_data, build_sales_kpi, MONTH_ORDER
+from data_utils import load_all_data, build_sales_kpi, get_active_months, MONTH_ORDER
 
 st.title("📊 영업 지표 (월별 전체 실적)")
 st.caption("'ALL데이터' 시트가 포함된 엑셀 파일을 업로드하면 자동으로 집계됩니다.")
@@ -19,13 +19,17 @@ except ValueError as e:
     st.error(str(e))
     st.stop()
 
-st.success(f"총 {len(df):,}건의 데이터를 불러왔어요. (데이터가 있는 월: {', '.join(sorted(set(df['월']), key=MONTH_ORDER.index))})")
+active_months = get_active_months(df)
+st.success(f"총 {len(df):,}건의 데이터를 불러왔어요. (데이터가 있는 월: {', '.join(active_months)})")
+if len(active_months) < len(MONTH_ORDER):
+    st.caption("결산 데이터가 없는 월은 표/그래프에서 숨겼어요. 데이터가 들어오면 자동으로 나타나요.")
 
 kpi = build_sales_kpi(df)
 
 # ---- 표 ----
 st.subheader("월별 집계표")
-display = kpi.copy()
+display_cols = ["ALL"] + active_months
+display = kpi[display_cols].copy()
 for col in display.columns:
     display[col] = display.apply(
         lambda row: f"{int(row[col]):,}" if row.name == "진행 건수" else f"{int(row[col]):,}원",
@@ -77,7 +81,7 @@ st.markdown(table_html, unsafe_allow_html=True)
 
 # ---- 차트 ----
 st.subheader("월별 추이")
-months = MONTH_ORDER
+months = active_months
 
 from plotly.subplots import make_subplots
 
