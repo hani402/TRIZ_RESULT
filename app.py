@@ -1,10 +1,16 @@
 import streamlit as st
 
+from views import home, sales_kpi, manager_kpi
+
 st.set_page_config(page_title="영업실 결산 대시보드", page_icon="📈", layout="wide")
 
-home_page = st.Page("home.py", title="홈", icon="🏠", default=True)
-sales_kpi_page = st.Page("pages/1_sales_kpi.py", title="영업 지표", icon="📊")
-manager_kpi_page = st.Page("pages/2_manager_kpi.py", title="매니저별 진척관리", icon="🧑‍💼")
+MENU = {
+      "🏠 홈": home,
+      "📊 영업 지표": sales_kpi,
+      "🧑‍💼 매니저별 진척관리": manager_kpi,
+}
 
-pg = st.navigation([home_page, sales_kpi_page, manager_kpi_page])
-pg.run()
+st.sidebar.title("메뉴")
+choice = st.sidebar.radio("이동", list(MENU.keys()), label_visibility="collapsed")
+
+MENU[choice].render()
