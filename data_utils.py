@@ -215,6 +215,9 @@ def build_product_view(df: pd.DataFrame, months: list) -> list:
             blocks.append({"group": pbnb, "sub": cat, "metrics": _metrics_for_mask(df, mask, months, include_count=False)})
 
     return blocks
+
+
+def build_transaction_view(df: pd.DataFrame, months: list) -> list:
     """다이렉트/벤더 구분별 진행 횟수·매출·GP 결과. 벤더사는 세부 벤더사별로 하위 전개.
     현재 데이터에 실제로 등록된 구분만 표시한다 (예: 글로벌 소싱처럼 값이 없는 구분은 자동으로 생략).
     반환: [{"category":.., "sub":.., "headcount":.., "metrics": {...}}, ...] (ALL 총계 포함)"""
