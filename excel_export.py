@@ -10,6 +10,10 @@ LABEL_FILL = PatternFill("solid", fgColor="F3F4F8")
 GROUP_FILL = PatternFill("solid", fgColor="E4E8F5")
 TOTAL_FILL = PatternFill("solid", fgColor="EEF1FB")
 ALLROW_FILL = PatternFill("solid", fgColor="FDF3E0")
+PB_FILL = PatternFill("solid", fgColor="CFE3FF")
+NB_FILL = PatternFill("solid", fgColor="CDF0DA")
+PB_SUBTOTAL_FILL = PatternFill("solid", fgColor="A9CBFF")
+NB_SUBTOTAL_FILL = PatternFill("solid", fgColor="9FE0B8")
 
 THIN = Side(style="thin", color="D9DCE3")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
@@ -41,6 +45,22 @@ def style_label(cell, bold=True):
 
 def style_group(cell):
     _apply(cell, fill=GROUP_FILL, font=Font(bold=True))
+
+
+def style_group_pb(cell):
+    _apply(cell, fill=PB_FILL, font=Font(bold=True, color="1E40AF"))
+
+
+def style_group_nb(cell):
+    _apply(cell, fill=NB_FILL, font=Font(bold=True, color="166534"))
+
+
+def style_subtotal_pb(cell, number_format=None):
+    _apply(cell, fill=PB_SUBTOTAL_FILL, font=Font(bold=True), number_format=number_format)
+
+
+def style_subtotal_nb(cell, number_format=None):
+    _apply(cell, fill=NB_SUBTOTAL_FILL, font=Font(bold=True), number_format=number_format)
 
 
 def style_total(cell, number_format=None):
