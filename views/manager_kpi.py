@@ -60,8 +60,11 @@ def render(df):
     if len(active_months) < len(MONTH_ORDER):
         st.caption(f"결산 데이터가 있는 월({', '.join(active_months)})만 표시하고 있어요. 나머지 월은 데이터가 들어오면 자동으로 나타나요.")
 
+    month_choice = st.selectbox("표시할 월", ["전체"] + active_months, key="manager_kpi_month_filter")
+    table_months = active_months if month_choice == "전체" else [month_choice]
+
     METRICS = ["매출 KPI", "GP KPI", "매출 결과", "GP 결과", "매출 달성률(%)", "GP 달성률(%)"]
-    COLS = ["합계"] + active_months  # 화면 표시용 (비활성 월 숨김)
+    COLS = ["합계"] + table_months  # 화면 표시용 (비활성 월 숨김 + 선택한 월만)
 
     def build_group_rows(sales_kpi_row, gp_kpi_row, rev_row, gp_row):
         rows = {}
@@ -89,16 +92,17 @@ def render(df):
         gp_row = {c: actuals.loc[(manager, "GP 결과"), c] for c in COLS}
         groups.append((manager, build_group_rows(sales_kpi_row, gp_kpi_row, rev_row, gp_row)))
 
-    # ---- 분기 헤더 구성 (활성 월만 그룹핑) ----
+    # ---- 분기 헤더 구성 (선택된 월 기준) ----
     quarter_groups = []
     for q in ["1Q", "2Q", "3Q", "4Q"]:
-        months_in_q = [m for m in active_months if QUARTER_MAP[m] == q]
+        months_in_q = [m for m in table_months if QUARTER_MAP[m] == q]
         if months_in_q:
             quarter_groups.append((q, months_in_q))
 
     # ---- HTML 렌더링 ----
     html = """
     <style>
+    .mgr-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .mgr-table { border-collapse: collapse; width: 100%; font-size: 13px; }
     .mgr-table th, .mgr-table td {
         text-align: center !important;
@@ -129,6 +133,7 @@ def render(df):
         font-weight: 700;
     }
     </style>
+    <div class="mgr-table-wrap">
     <table class="mgr-table">
     <thead>
     <tr>
@@ -161,6 +166,6 @@ def render(df):
                 html += f"<td{cls}>{text}</td>"
             html += "</tr>"
 
-    html += "</tbody></table>"
+    html += "</tbody></table></div>"
 
     st.markdown(html, unsafe_allow_html=True)
