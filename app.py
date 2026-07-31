@@ -1,81 +1,74 @@
-import os
-import io
-import hashlib
+"""업로드한 ALL데이터를 GitHub 저장소에 자동 커밋해서 영구 저장/복원하는 모듈.
+Streamlit Cloud의 Secrets에 GITHUB_TOKEN, GITHUB_REPO가 설정되어 있어야 동작한다."""
+import base64
 import streamlit as st
+import requests
 
-from data_utils import load_all_data
-from views import sales_kpi, manager_kpi, transaction, seller, product
-import github_sync
+GITHUB_API = "https://api.github.com"
+DEFAULT_PATH = "data_cache/last_all_data.xlsx"
 
-st.set_page_config(page_title="영업실 결산 대시보드", page_icon="📈", layout="wide")
 
-CACHE_DIR = "data_cache"
-CACHE_PATH = os.path.join(CACHE_DIR, "last_all_data.xlsx")
+def _get_config():
+    token = st.secrets.get("GITHUB_TOKEN")
+    repo = st.secrets.get("GITHUB_REPO")
+    path = st.secrets.get("GITHUB_DATA_PATH", DEFAULT_PATH)
+    return token, repo, path
 
-st.sidebar.title("메뉴")
 
-# ---- 데이터 업로드 (한 번만, 모든 화면이 공유) ----
-uploaded = st.sidebar.file_uploader("ALL데이터 엑셀 업로드 (.xlsx)", type=["xlsx"])
-if uploaded is not None:
-    file_bytes = uploaded.getvalue()
-    file_hash = hashlib.md5(file_bytes).hexdigest()
+def is_configured() -> bool:
+    token, repo, _ = _get_config()
+    return bool(token and repo)
 
-    # 이미 처리한 파일과 동일하면(재실행으로 인한 중복) 건너뜀
-    if st.session_state.get("last_synced_hash") != file_hash:
-        try:
-            # 로컬 캐시에도 저장 (같은 세션/새로고침 대비)
-            os.makedirs(CACHE_DIR, exist_ok=True)
-            with open(CACHE_PATH, "wb") as f:
-                f.write(file_bytes)
 
-            st.session_state["df"] = load_all_data(io.BytesIO(file_bytes))
-            st.session_state["df_filename"] = uploaded.name
+def fetch_all_data_bytes():
+    """GitHub에 저장된 최신 ALL데이터 파일을 가져온다.
+    반환: (bytes 또는 None, 에러메시지 또는 None)"""
+    token, repo, path = _get_config()
+    if not token or not repo:
+        return None, "GITHUB_TOKEN/GITHUB_REPO가 설정되어 있지 않아요."
+    url = f"{GITHUB_API}/repos/{repo}/contents/{path}"
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    try:
+        resp = requests.get(url, headers=headers, timeout=10)
+    except requests.RequestException as e:
+        return None, f"GitHub 요청 실패: {e}"
+    if resp.status_code == 404:
+        return None, f"GitHub에 저장된 파일이 없어요 (경로: {path})."
+    if resp.status_code != 200:
+        return None, f"GitHub 응답 오류 (status {resp.status_code}): {resp.text[:200]}"
+    content = resp.json().get("content", "")
+    try:
+        return base64.b64decode(content), None
+    except Exception as e:
+        return None, f"파일 디코딩 실패: {e}"
 
-            # GitHub에 영구 저장 (설정되어 있는 경우)
-            if github_sync.is_configured():
-                try:
-                    github_sync.upload_all_data_bytes(file_bytes, commit_message=f"Update ALL데이터 ({uploaded.name})")
-                    st.sidebar.success("GitHub에 영구 저장했어요. 재부팅해도 유지돼요.")
-                except Exception as e:
-                    st.sidebar.warning(f"GitHub 저장 중 문제가 있었어요: {e}")
 
-            st.session_state["last_synced_hash"] = file_hash
-        except ValueError as e:
-            st.sidebar.error(str(e))
+def upload_all_data_bytes(file_bytes: bytes, commit_message: str = "Update ALL데이터"):
+    """업로드한 파일을 GitHub 저장소에 커밋(생성 또는 갱신)한다. 409 충돌 시 sha를 재조회해 1회 재시도."""
+    token, repo, path = _get_config()
+    if not token or not repo:
+        raise RuntimeError("GitHub 연동(GITHUB_TOKEN/GITHUB_REPO)이 설정되어 있지 않아요.")
 
-# ---- 세션에 없으면, 저장된 데이터를 자동으로 복원 ----
-if "df" not in st.session_state:
-    if os.path.exists(CACHE_PATH):
-        try:
-            st.session_state["df"] = load_all_data(CACHE_PATH)
-            st.session_state.setdefault("df_filename", "(이전에 업로드된 파일)")
-        except Exception:
-            pass
-    elif github_sync.is_configured():
-        cached_bytes = github_sync.fetch_all_data_bytes()
-        if cached_bytes:
-            try:
-                st.session_state["df"] = load_all_data(io.BytesIO(cached_bytes))
-                st.session_state.setdefault("df_filename", "(GitHub에 저장된 최신 파일)")
-            except Exception:
-                pass
+    url = f"{GITHUB_API}/repos/{repo}/contents/{path}"
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
 
-df = st.session_state.get("df")
-if df is not None:
-    st.sidebar.success(f"'{st.session_state.get('df_filename', '')}' 불러옴 ({len(df):,}건)")
-else:
-    st.sidebar.info("엑셀 파일을 업로드하면 모든 화면에 반영돼요.")
+    def _current_sha():
+        get_resp = requests.get(url, headers=headers, timeout=10)
+        if get_resp.status_code == 200:
+            return get_resp.json().get("sha")
+        return None
 
-st.sidebar.divider()
+    for attempt in range(2):
+        sha = _current_sha()
+        payload = {
+            "message": commit_message,
+            "content": base64.b64encode(file_bytes).decode("utf-8"),
+        }
+        if sha:
+            payload["sha"] = sha
 
-MENU = {
-    "📊 영업 지표": sales_kpi,
-    "🧑‍💼 매니저별": manager_kpi,
-    "📑 거래별": transaction,
-    "🙋 셀러별": seller,
-    "🏷️ 상품별": product,
-}
-
-choice = st.sidebar.radio("이동", list(MENU.keys()), label_visibility="collapsed")
-
-MENU[choice].render(df)
+        put_resp = requests.put(url, headers=headers, json=payload, timeout=20)
+        if put_resp.status_code == 409 and attempt == 0:
+            continue  # sha가 그 사이 바뀐 경우, 재조회 후 한 번 더 시도
+        put_resp.raise_for_status()
+        return put_resp.json()
