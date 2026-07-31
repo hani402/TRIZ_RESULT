@@ -39,10 +39,10 @@ def render(df):
     html = """
     <style>
     .pd-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .pd-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .pd-table { border-collapse: collapse; width: 100%; font-size: 15px; }
     .pd-table th, .pd-table td {
         text-align: center !important;
-        padding: 6px 8px;
+        padding: 9px 11px;
         border: 1px solid #d9dce3;
         color: #1f2937 !important;
         white-space: nowrap;
