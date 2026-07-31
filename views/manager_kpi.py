@@ -3,7 +3,7 @@ import numpy as np
 
 from data_utils import (
     get_managers, get_active_months, build_manager_actuals,
-    load_kpi_targets, MONTH_ORDER, QUARTER_MAP,
+    load_manager_kpi_targets, MONTH_ORDER, QUARTER_MAP,
 )
 
 
@@ -41,8 +41,19 @@ def render(df):
 
     actuals = build_manager_actuals(df, managers)  # index=(담당자,지표), columns=합계+월
 
-    # ---- KPI 목표 (엑셀 백데이터에서 읽기 전용으로 불러옴) ----
-    edited_sales, edited_gp = load_kpi_targets(managers)
+    # ---- KPI 목표 (담당자별 고정 KPI 백데이터, 읽기 전용) ----
+    kpi_targets = load_manager_kpi_targets()
+    if not kpi_targets:
+        st.warning("KPI 백데이터 파일(`data/kpi_manager_targets.xlsx`)을 찾지 못했어요. KPI 값 없이 실적만 표시할게요.")
+
+    def _kpi_value(manager, metric, col):
+        m = kpi_targets.get(manager)
+        if not m:
+            return np.nan
+        row = m.get(metric)
+        if not row:
+            return np.nan
+        return row.get(col, np.nan)
 
     # ---- 집계표 구성 ----
     st.subheader("매니저별 진척 현황")
@@ -62,23 +73,18 @@ def render(df):
         rows["GP 달성률(%)"] = {c: _safe_div(gp_row[c], gp_kpi_row[c]) for c in COLS}
         return rows
 
-    def _kpi_value(edited_df, manager, col):
-        if col == "합계":
-            return edited_df.loc[manager, MONTH_ORDER].sum(skipna=True)
-        return edited_df.loc[manager, col]
-
     groups = []
 
-    # 부서 총합
-    total_sales_kpi = {c: sum((_kpi_value(edited_sales, m, c) or 0) for m in managers) for c in COLS}
-    total_gp_kpi = {c: sum((_kpi_value(edited_gp, m, c) or 0) for m in managers) for c in COLS}
+    # 부서 총합 (KPI는 백데이터의 '부서 총합' 행을 그대로 사용, 실적은 담당자 실적 합산)
+    total_sales_kpi = {c: _kpi_value("부서 총합", "매출 KPI", c) for c in COLS}
+    total_gp_kpi = {c: _kpi_value("부서 총합", "GP KPI", c) for c in COLS}
     total_rev = {c: (actuals.xs("매출 결과", level="지표")["합계"].sum() if c == "합계" else actuals.xs("매출 결과", level="지표")[c].sum()) for c in COLS}
     total_gp = {c: (actuals.xs("GP 결과", level="지표")["합계"].sum() if c == "합계" else actuals.xs("GP 결과", level="지표")[c].sum()) for c in COLS}
     groups.append(("부서 총합", build_group_rows(total_sales_kpi, total_gp_kpi, total_rev, total_gp)))
 
     for manager in managers:
-        sales_kpi_row = {c: _kpi_value(edited_sales, manager, c) for c in COLS}
-        gp_kpi_row = {c: _kpi_value(edited_gp, manager, c) for c in COLS}
+        sales_kpi_row = {c: _kpi_value(manager, "매출 KPI", c) for c in COLS}
+        gp_kpi_row = {c: _kpi_value(manager, "GP KPI", c) for c in COLS}
         rev_row = {c: actuals.loc[(manager, "매출 결과"), c] for c in COLS}
         gp_row = {c: actuals.loc[(manager, "GP 결과"), c] for c in COLS}
         groups.append((manager, build_group_rows(sales_kpi_row, gp_kpi_row, rev_row, gp_row)))
