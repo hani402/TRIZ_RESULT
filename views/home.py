@@ -20,4 +20,8 @@ def render(df):
     st.write("담당자별 매출/GP 실적과 KPI 달성률을 확인해요.")
 
     st.divider()
+    st.subheader("📑 영업 거래별")
+    st.write("다이렉트/벤더/PA/기타 구분별로 진행 횟수·매출·GP 결과를 확인해요.")
+
+    st.divider()
     st.caption("다음 순서로 셀러별/셀러상품별 · 상품별 뷰가 추가될 예정입니다.")
