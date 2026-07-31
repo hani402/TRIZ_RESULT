@@ -41,7 +41,7 @@ def fetch_all_data_bytes():
 
 
 def upload_all_data_bytes(file_bytes: bytes, commit_message: str = "Update ALL데이터"):
-    """업로드한 파일을 GitHub 저장소에 커밋(생성 또는 갱신)한다."""
+    """업로드한 파일을 GitHub 저장소에 커밋(생성 또는 갱신)한다. 409 충돌 시 sha를 재조회해 1회 재시도."""
     token, repo, path = _get_config()
     if not token or not repo:
         raise RuntimeError("GitHub 연동(GITHUB_TOKEN/GITHUB_REPO)이 설정되어 있지 않아요.")
@@ -49,18 +49,23 @@ def upload_all_data_bytes(file_bytes: bytes, commit_message: str = "Update ALL�
     url = f"{GITHUB_API}/repos/{repo}/contents/{path}"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
 
-    sha = None
-    get_resp = requests.get(url, headers=headers, timeout=10)
-    if get_resp.status_code == 200:
-        sha = get_resp.json().get("sha")
+    def _current_sha():
+        get_resp = requests.get(url, headers=headers, timeout=10)
+        if get_resp.status_code == 200:
+            return get_resp.json().get("sha")
+        return None
 
-    payload = {
-        "message": commit_message,
-        "content": base64.b64encode(file_bytes).decode("utf-8"),
-    }
-    if sha:
-        payload["sha"] = sha
+    for attempt in range(2):
+        sha = _current_sha()
+        payload = {
+            "message": commit_message,
+            "content": base64.b64encode(file_bytes).decode("utf-8"),
+        }
+        if sha:
+            payload["sha"] = sha
 
-    put_resp = requests.put(url, headers=headers, json=payload, timeout=20)
-    put_resp.raise_for_status()
-    return put_resp.json()
+        put_resp = requests.put(url, headers=headers, json=payload, timeout=20)
+        if put_resp.status_code == 409 and attempt == 0:
+            continue  # sha가 그 사이 바뀐 경우, 재조회 후 한 번 더 시도
+        put_resp.raise_for_status()
+        return put_resp.json()
