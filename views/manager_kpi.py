@@ -3,7 +3,7 @@ import numpy as np
 
 from data_utils import (
     get_managers, get_active_months, build_manager_actuals,
-    load_kpi_targets, save_kpi_targets_to_bytes, MONTH_ORDER, QUARTER_MAP,
+    load_kpi_targets, MONTH_ORDER, QUARTER_MAP,
 )
 
 
@@ -41,50 +41,11 @@ def render(df):
 
     actuals = build_manager_actuals(df, managers)  # index=(담당자,지표), columns=합계+월
 
-    # ---- KPI 목표 입력 (저장된 백데이터로 초기값 채움) ----
-    st.subheader("① KPI 목표 입력")
-    st.caption("담당자별 월 매출/GP 목표예요. 저장된 값이 자동으로 채워지며, 수정 후 아래 '저장' 버튼으로 백데이터 파일을 갱신할 수 있어요.")
-
-    def _init_kpi_df(key, managers):
-        if key not in st.session_state or set(st.session_state[key].index) != set(managers):
-            saved_sales, saved_gp = load_kpi_targets(managers)
-            base = saved_sales if key == "manager_sales_kpi" else saved_gp
-            st.session_state[key] = base
-        return st.session_state[key]
-
-    sales_kpi_input = _init_kpi_df("manager_sales_kpi", managers)
-    gp_kpi_input = _init_kpi_df("manager_gp_kpi", managers)
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.markdown("**매출 KPI (원)**")
-        edited_sales = st.data_editor(
-            sales_kpi_input, use_container_width=True, key="editor_sales_kpi",
-            column_config={m: st.column_config.NumberColumn(m, format="%d") for m in MONTH_ORDER},
-        )
-        st.session_state["manager_sales_kpi"] = edited_sales
-    with col_b:
-        st.markdown("**GP KPI (원)**")
-        edited_gp = st.data_editor(
-            gp_kpi_input, use_container_width=True, key="editor_gp_kpi",
-            column_config={m: st.column_config.NumberColumn(m, format="%d") for m in MONTH_ORDER},
-        )
-        st.session_state["manager_gp_kpi"] = edited_gp
-
-    save_col1, save_col2 = st.columns([1, 3])
-    with save_col1:
-        kpi_bytes = save_kpi_targets_to_bytes(edited_sales, edited_gp)
-        st.download_button(
-            "💾 KPI 목표 저장 (kpi_targets.xlsx)",
-            data=kpi_bytes,
-            file_name="kpi_targets.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-    with save_col2:
-        st.caption("다운로드한 파일로 저장소의 `data/kpi_targets.xlsx`를 교체하면, 다음 접속부터 이 값이 기본으로 불러와져요.")
+    # ---- KPI 목표 (엑셀 백데이터에서 읽기 전용으로 불러옴) ----
+    edited_sales, edited_gp = load_kpi_targets(managers)
 
     # ---- 집계표 구성 ----
-    st.subheader("② 매니저별 진척 현황")
+    st.subheader("매니저별 진척 현황")
     if len(active_months) < len(MONTH_ORDER):
         st.caption(f"결산 데이터가 있는 월({', '.join(active_months)})만 표시하고 있어요. 나머지 월은 데이터가 들어오면 자동으로 나타나요.")
 
