@@ -1,5 +1,6 @@
 import os
 import io
+import hashlib
 import streamlit as st
 
 from data_utils import load_all_data
@@ -16,26 +17,31 @@ st.sidebar.title("메뉴")
 # ---- 데이터 업로드 (한 번만, 모든 화면이 공유) ----
 uploaded = st.sidebar.file_uploader("ALL데이터 엑셀 업로드 (.xlsx)", type=["xlsx"])
 if uploaded is not None:
-    try:
-        file_bytes = uploaded.getvalue()
+    file_bytes = uploaded.getvalue()
+    file_hash = hashlib.md5(file_bytes).hexdigest()
 
-        # 로컬 캐시에도 저장 (같은 세션/새로고침 대비)
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        with open(CACHE_PATH, "wb") as f:
-            f.write(file_bytes)
+    # 이미 처리한 파일과 동일하면(재실행으로 인한 중복) 건너뜀
+    if st.session_state.get("last_synced_hash") != file_hash:
+        try:
+            # 로컬 캐시에도 저장 (같은 세션/새로고침 대비)
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            with open(CACHE_PATH, "wb") as f:
+                f.write(file_bytes)
 
-        st.session_state["df"] = load_all_data(io.BytesIO(file_bytes))
-        st.session_state["df_filename"] = uploaded.name
+            st.session_state["df"] = load_all_data(io.BytesIO(file_bytes))
+            st.session_state["df_filename"] = uploaded.name
 
-        # GitHub에 영구 저장 (설정되어 있는 경우)
-        if github_sync.is_configured():
-            try:
-                github_sync.upload_all_data_bytes(file_bytes, commit_message=f"Update ALL데이터 ({uploaded.name})")
-                st.sidebar.success("GitHub에 영구 저장했어요. 재부팅해도 유지돼요.")
-            except Exception as e:
-                st.sidebar.warning(f"GitHub 저장 중 문제가 있었어요: {e}")
-    except ValueError as e:
-        st.sidebar.error(str(e))
+            # GitHub에 영구 저장 (설정되어 있는 경우)
+            if github_sync.is_configured():
+                try:
+                    github_sync.upload_all_data_bytes(file_bytes, commit_message=f"Update ALL데이터 ({uploaded.name})")
+                    st.sidebar.success("GitHub에 영구 저장했어요. 재부팅해도 유지돼요.")
+                except Exception as e:
+                    st.sidebar.warning(f"GitHub 저장 중 문제가 있었어요: {e}")
+
+            st.session_state["last_synced_hash"] = file_hash
+        except ValueError as e:
+            st.sidebar.error(str(e))
 
 # ---- 세션에 없으면, 저장된 데이터를 자동으로 복원 ----
 if "df" not in st.session_state:
