@@ -120,6 +120,93 @@ def build_manager_actuals(df: pd.DataFrame, managers: list) -> pd.DataFrame:
     return result
 
 
+TOP_CATEGORIES_NO_COUNT = ["PA", "기타"]  # 진행 횟수 집계에서 제외 (매출/GP만 표시)
+TOP_CATEGORIES_WITH_COUNT = ["글로벌 소싱", "셀러"]  # 진행 횟수 포함
+
+
+def _metrics_for_mask(df: pd.DataFrame, mask, months: list, include_count: bool) -> dict:
+    """주어진 mask(다이렉트/벤더 조건)에 대해 월별 진행 횟수/매출 결과/GP 결과 계산."""
+    sub_all = df[mask]
+    metrics = {}
+    if include_count:
+        count_row = {m: len(sub_all[sub_all["월"] == m]) for m in months}
+        count_row["합계"] = sum(count_row.values())
+        metrics["진행 횟수"] = count_row
+
+    rev_row = {m: sub_all[sub_all["월"] == m]["매출"].sum() for m in months}
+    rev_row["합계"] = sum(rev_row.values())
+    metrics["매출 결과"] = rev_row
+
+    gp_row = {m: sub_all[sub_all["월"] == m]["트리즈GP"].sum() for m in months}
+    gp_row["합계"] = sum(gp_row.values())
+    metrics["GP 결과"] = gp_row
+
+    return metrics
+
+
+def build_transaction_view(df: pd.DataFrame, months: list) -> list:
+    """다이렉트/벤더 구분별 진행 횟수·매출·GP 결과. 벤더사는 세부 벤더사별로 하위 전개.
+    반환: [{"category":.., "sub":.., "headcount":.., "metrics": {...}}, ...] (ALL 총계 포함)"""
+    d_col = df["다이렉트/벤더"].astype(str).str.strip()
+
+    blocks = []
+    headcounts = {}
+
+    for cat in TOP_CATEGORIES_NO_COUNT:
+        mask = d_col == cat
+        headcount = df.loc[mask, "셀러명"].nunique()
+        headcounts[cat] = headcount
+        blocks.append({
+            "category": cat, "sub": None, "headcount": headcount,
+            "metrics": _metrics_for_mask(df, mask, months, include_count=False),
+        })
+
+    for cat in TOP_CATEGORIES_WITH_COUNT:
+        mask = d_col == cat
+        headcount = df.loc[mask, "셀러명"].nunique()
+        headcounts[cat] = headcount
+        blocks.append({
+            "category": cat, "sub": None, "headcount": headcount,
+            "metrics": _metrics_for_mask(df, mask, months, include_count=True),
+        })
+
+    # 벤더사 (전체 요약 + 세부 벤더사별)
+    vendor_mask_all = d_col.str.startswith("벤더사")
+    vendor_names = sorted(
+        d_col[vendor_mask_all].unique().tolist(),
+        key=lambda name: -df.loc[d_col == name, "셀러명"].nunique(),
+    )
+    vendor_headcount_total = df.loc[vendor_mask_all, "셀러명"].nunique()
+    headcounts["벤더사"] = vendor_headcount_total
+
+    blocks.append({
+        "category": "벤더사", "sub": f"전체 ({len(vendor_names)}개사)", "headcount": vendor_headcount_total,
+        "metrics": _metrics_for_mask(df, vendor_mask_all, months, include_count=True),
+    })
+    for name in vendor_names:
+        mask = d_col == name
+        headcount = df.loc[mask, "셀러명"].nunique()
+        short_name = name.replace("벤더사 (", "").rstrip(")")
+        blocks.append({
+            "category": "벤더사", "sub": short_name, "headcount": headcount,
+            "metrics": _metrics_for_mask(df, mask, months, include_count=True),
+        })
+
+    # ALL 총계 (매출/GP는 전체 데이터 기준, 진행 횟수는 기타/PA 제외, 인원수는 셀러+벤더사 합)
+    all_mask = pd.Series(True, index=df.index)
+    all_metrics = _metrics_for_mask(df, all_mask, months, include_count=False)
+    count_mask = ~d_col.isin(EXCLUDE_FROM_COUNT)
+    count_sub = df[count_mask]
+    count_row = {m: len(count_sub[count_sub["월"] == m]) for m in months}
+    count_row["합계"] = sum(count_row.values())
+    all_metrics = {"진행 횟수": count_row, **all_metrics}
+    all_headcount = headcounts.get("셀러", 0) + headcounts.get("벤더사", 0)
+
+    blocks.append({"category": "ALL", "sub": None, "headcount": all_headcount, "metrics": all_metrics})
+
+    return blocks
+
+
 MANAGER_KPI_PATH = "data/kpi_manager_targets.xlsx"
 
 
