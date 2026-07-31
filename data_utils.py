@@ -216,6 +216,34 @@ def build_seller_total(rows: list, months: list) -> dict:
     return total_row
 
 
+def build_category_products(df: pd.DataFrame, group: str, sub: str, months: list) -> list:
+    """선택한 PB/NB + 카테고리(또는 소계) 안의 '진행상품'별 매출/GP 집계.
+    sub가 '소계'이면 해당 PB/NB 전체 카테고리를 합쳐서 상품별로 집계.
+    반환: 매출 합계 기준 내림차순 정렬된 딕셔너리 리스트."""
+    pbnb_col = df["PB/NB"].astype(str).str.strip()
+    mask = pbnb_col == group
+    if sub and sub != "소계":
+        cat_col = df["카테고리"].astype(str).str.strip()
+        mask = mask & (cat_col == sub)
+
+    d = df[mask]
+    rows = []
+    for product, g in d.groupby("진행상품"):
+        if product is None or (isinstance(product, float) and pd.isna(product)):
+            continue
+        rev = g["매출"].sum()
+        gp = g["트리즈GP"].sum()
+        row = {"진행상품": product, "매출": rev, "GP": gp}
+        for m in months:
+            sub_g = g[g["월"] == m]
+            row[f"{m}_매출"] = sub_g["매출"].sum()
+            row[f"{m}_GP"] = sub_g["트리즈GP"].sum()
+        rows.append(row)
+
+    rows.sort(key=lambda r: -(r["매출"] or 0))
+    return rows
+
+
 NB_CATEGORIES = [
     "뷰티 디바이스", "건기식", "뷰티", "식품", "리빙",
     "패션/잡화", "이너뷰티", "서비스",
