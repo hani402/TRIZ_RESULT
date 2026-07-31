@@ -3,23 +3,14 @@ import pandas as pd
 import io
 from plotly.subplots import make_subplots
 
-from data_utils import load_all_data, build_sales_kpi, get_active_months, MONTH_ORDER
+from data_utils import build_sales_kpi, get_active_months, MONTH_ORDER
 
 
-def render():
+def render(df):
     st.title("📊 영업 지표 (월별 전체 실적)")
-    st.caption("'ALL데이터' 시트가 포함된 엑셀 파일을 업로드하면 자동으로 집계됩니다.")
 
-    uploaded = st.file_uploader("ALL데이터 엑셀 업로드 (.xlsx)", type=["xlsx"], key="sales_kpi_uploader")
-
-    if uploaded is None:
-        st.info("파일을 업로드하면 결과가 표시됩니다.")
-        return
-
-    try:
-        df = load_all_data(uploaded)
-    except ValueError as e:
-        st.error(str(e))
+    if df is None:
+        st.info("왼쪽 사이드바에서 ALL데이터 엑셀 파일을 업로드하면 결과가 표시됩니다.")
         return
 
     active_months = get_active_months(df)
