@@ -28,10 +28,13 @@ def render(df):
 
     blocks = build_transaction_view(df, active_months)
 
-    COLS = ["합계"] + active_months
+    month_choice = st.selectbox("표시할 월", ["전체"] + active_months, key="transaction_month_filter")
+    table_months = active_months if month_choice == "전체" else [month_choice]
+
+    COLS = ["합계"] + table_months
     quarter_groups = []
     for q in ["1Q", "2Q", "3Q", "4Q"]:
-        months_in_q = [m for m in active_months if QUARTER_MAP[m] == q]
+        months_in_q = [m for m in table_months if QUARTER_MAP[m] == q]
         if months_in_q:
             quarter_groups.append((q, months_in_q))
 
@@ -43,6 +46,7 @@ def render(df):
 
     html = """
     <style>
+    .tx-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .tx-table { border-collapse: collapse; width: 100%; font-size: 13px; }
     .tx-table th, .tx-table td {
         text-align: center !important;
@@ -80,6 +84,7 @@ def render(df):
         font-weight: 500;
     }
     </style>
+    <div class="tx-table-wrap">
     <table class="tx-table">
     <thead>
     <tr>
@@ -125,6 +130,6 @@ def render(df):
                 html += f"<td{cls}>{text}</td>"
             html += "</tr>"
 
-    html += "</tbody></table>"
+    html += "</tbody></table></div>"
 
     st.markdown(html, unsafe_allow_html=True)
