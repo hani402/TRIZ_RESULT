@@ -21,23 +21,26 @@ def is_configured() -> bool:
 
 
 def fetch_all_data_bytes():
-    """GitHub에 저장된 최신 ALL데이터 파일을 가져온다. 없으면 None."""
+    """GitHub에 저장된 최신 ALL데이터 파일을 가져온다.
+    반환: (bytes 또는 None, 에러메시지 또는 None)"""
     token, repo, path = _get_config()
     if not token or not repo:
-        return None
+        return None, "GITHUB_TOKEN/GITHUB_REPO가 설정되어 있지 않아요."
     url = f"{GITHUB_API}/repos/{repo}/contents/{path}"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     try:
         resp = requests.get(url, headers=headers, timeout=10)
-    except requests.RequestException:
-        return None
+    except requests.RequestException as e:
+        return None, f"GitHub 요청 실패: {e}"
+    if resp.status_code == 404:
+        return None, f"GitHub에 저장된 파일이 없어요 (경로: {path})."
     if resp.status_code != 200:
-        return None
+        return None, f"GitHub 응답 오류 (status {resp.status_code}): {resp.text[:200]}"
     content = resp.json().get("content", "")
     try:
-        return base64.b64decode(content)
-    except Exception:
-        return None
+        return base64.b64decode(content), None
+    except Exception as e:
+        return None, f"파일 디코딩 실패: {e}"
 
 
 def upload_all_data_bytes(file_bytes: bytes, commit_message: str = "Update ALL데이터"):
