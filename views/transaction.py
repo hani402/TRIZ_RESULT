@@ -102,7 +102,7 @@ def render(df):
             html += f"<th>{month}</th>"
     html += "</tr></thead><tbody>"
 
-    prev_category = None
+    last_emitted_category = None
     for b in blocks:
         is_all = b["category"] == "ALL"
         metrics = b["metrics"]
@@ -113,8 +113,9 @@ def render(df):
             row_class = ' class="all-row"' if is_all else ""
             html += f"<tr{row_class}>"
 
-            if b["category"] != prev_category:
+            if b["category"] != last_emitted_category:
                 html += f'<td rowspan="{category_rowcount[b["category"]]}" class="cat-cell">{b["category"]}</td>'
+                last_emitted_category = b["category"]
 
             if i == 0:
                 sub_text = b["sub"] if b["sub"] else "-"
@@ -131,8 +132,6 @@ def render(df):
                 cls = ' class="total-cell"' if c == "합계" else ""
                 html += f"<td{cls}>{text}</td>"
             html += "</tr>"
-
-        prev_category = b["category"]
 
     html += "</tbody></table>"
 
