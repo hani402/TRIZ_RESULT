@@ -120,40 +120,60 @@ def build_manager_actuals(df: pd.DataFrame, managers: list) -> pd.DataFrame:
     return result
 
 
-KPI_TARGETS_PATH = "data/kpi_targets.xlsx"
+MANAGER_KPI_PATH = "data/kpi_manager_targets.xlsx"
 
 
-def load_kpi_targets(managers: list, path: str = KPI_TARGETS_PATH):
-    """저장된 KPI 백데이터 파일을 불러와 (매출KPI, GP KPI) 데이터프레임 반환.
-    파일이 없거나 특정 담당자가 없으면 빈 값(NaN)으로 채움."""
+def load_manager_kpi_targets(path: str = MANAGER_KPI_PATH) -> dict:
+    """담당자별 고정 KPI 백데이터 파일을 로드.
+    형식: 담당자(병합)/구분(매출 KPI, GP KPI)/합계/1월..12월, '부서 총합' 행 포함.
+    0은 '해당 기간 KPI 미설정'으로 보고 빈 값(NaN) 처리 (합계 열은 제외).
+    반환: {담당자: {"매출 KPI": {"합계":.., "1월":.., ...}, "GP KPI": {...}}}
+    """
     import os
-    sales_df = pd.DataFrame(index=managers, columns=MONTH_ORDER, dtype="float64")
-    gp_df = pd.DataFrame(index=managers, columns=MONTH_ORDER, dtype="float64")
+    import numpy as np
 
-    if os.path.exists(path):
-        try:
-            saved_sales = pd.read_excel(path, sheet_name="매출KPI", index_col=0)
-            saved_gp = pd.read_excel(path, sheet_name="GP KPI", index_col=0)
-            for m in managers:
-                if m in saved_sales.index:
-                    for month in MONTH_ORDER:
-                        if month in saved_sales.columns:
-                            sales_df.loc[m, month] = saved_sales.loc[m, month]
-                if m in saved_gp.index:
-                    for month in MONTH_ORDER:
-                        if month in saved_gp.columns:
-                            gp_df.loc[m, month] = saved_gp.loc[m, month]
-        except Exception:
-            pass
+    if not os.path.exists(path):
+        return {}
 
-    return sales_df, gp_df
+    try:
+        raw = pd.read_excel(path, header=None)
+    except Exception:
+        return {}
 
+    header_row = None
+    for r in range(min(10, len(raw))):
+        if (raw.iloc[r] == "담당자").any():
+            header_row = r
+            break
+    if header_row is None:
+        return {}
 
-def save_kpi_targets_to_bytes(sales_df: pd.DataFrame, gp_df: pd.DataFrame) -> bytes:
-    """수정된 KPI 값을 엑셀 바이트로 변환 (다운로드용)."""
-    import io
-    buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
-        sales_df.to_excel(writer, sheet_name="매출KPI")
-        gp_df.to_excel(writer, sheet_name="GP KPI")
-    return buf.getvalue()
+    header = raw.iloc[header_row]
+    col_map = {}
+    for c in raw.columns:
+        v = header[c]
+        if isinstance(v, str) and v.strip():
+            col_map[c] = v.strip()
+
+    df = raw.iloc[header_row + 1:].copy()
+    df = df.rename(columns=col_map)
+    keep_cols = ["담당자", "구분", "합계"] + MONTH_ORDER
+    df = df[[c for c in keep_cols if c in df.columns]]
+    df["담당자"] = df["담당자"].ffill()
+    df = df[df["구분"].notna()]
+
+    result = {}
+    for manager, group in df.groupby("담당자", sort=False):
+        manager_data = {}
+        for _, row in group.iterrows():
+            metric = row["구분"]
+            values = {}
+            for col in ["합계"] + MONTH_ORDER:
+                v = row.get(col)
+                if col != "합계" and (v == 0 or pd.isna(v)):
+                    v = np.nan
+                values[col] = v
+            manager_data[metric] = values
+        result[manager] = manager_data
+
+    return result
