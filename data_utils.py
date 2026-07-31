@@ -180,6 +180,7 @@ def build_seller_view(df: pd.DataFrame, months: list, product: str = None) -> li
             "평균매출": (rev / cnt) if cnt else None,
             "GP": gp,
             "평균GP": (gp / cnt) if cnt else None,
+            "건수": cnt,
         }
         for m in months:
             sub = g[g["월"] == m]
@@ -189,6 +190,30 @@ def build_seller_view(df: pd.DataFrame, months: list, product: str = None) -> li
 
     rows.sort(key=lambda r: -(r["매출"] or 0))
     return rows
+
+
+def build_seller_total(rows: list, months: list) -> dict:
+    """build_seller_view가 반환한 셀러별 행 리스트로부터 전체 총합 행을 계산."""
+    total_rev = sum(r["매출"] or 0 for r in rows)
+    total_gp = sum(r["GP"] or 0 for r in rows)
+    total_cnt = sum(r["건수"] or 0 for r in rows)
+
+    total_row = {
+        "셀러명": "총합",
+        "비전속": "-",
+        "다이렉트/벤더": "-",
+        "매출비중": 1.0 if total_rev else None,
+        "GP비중": 1.0 if total_gp else None,
+        "매출": total_rev,
+        "평균매출": (total_rev / total_cnt) if total_cnt else None,
+        "GP": total_gp,
+        "평균GP": (total_gp / total_cnt) if total_cnt else None,
+        "건수": total_cnt,
+    }
+    for m in months:
+        total_row[f"{m}_매출"] = sum(r.get(f"{m}_매출", 0) or 0 for r in rows)
+        total_row[f"{m}_GP"] = sum(r.get(f"{m}_GP", 0) or 0 for r in rows)
+    return total_row
 
 
 NB_CATEGORIES = [
