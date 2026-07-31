@@ -118,7 +118,6 @@ def render(df):
             html += f"<th>{month}</th>"
     html += "</tr></thead><tbody>"
 
-    GROUP_CELL_CLASS = {"PB": "group-cell-pb", "NB": "group-cell-nb"}
     SUBTOTAL_ROW_CLASS = {"PB": "subtotal-row-pb", "NB": "subtotal-row-nb"}
 
     last_emitted_group = None
@@ -138,8 +137,7 @@ def render(df):
             html += f"<tr{row_class}>"
 
             if b["group"] != last_emitted_group:
-                cat_cls = "group-cell" if is_all else GROUP_CELL_CLASS.get(b["group"], "group-cell")
-                html += f'<td rowspan="{group_rowcount[b["group"]]}" class="{cat_cls}">{b["group"]}</td>'
+                html += f'<td rowspan="{group_rowcount[b["group"]]}" class="group-cell">{b["group"]}</td>'
                 last_emitted_group = b["group"]
 
             if i == 0:
@@ -266,10 +264,6 @@ def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
             cell = ws.cell(row=r, column=1)
             if is_all:
                 xx.style_allrow(cell)
-            elif group == "PB":
-                xx.style_group_pb(cell)
-            elif group == "NB":
-                xx.style_group_nb(cell)
             else:
                 xx.style_group(cell)
 
