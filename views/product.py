@@ -96,14 +96,6 @@ def render(df):
         background-color: #fdf3e0 !important;
         font-weight: 700;
     }
-    .pd-table tr.subtotal-row-pb td {
-        background-color: #a9cbff !important;
-        font-weight: 700;
-    }
-    .pd-table tr.subtotal-row-nb td {
-        background-color: #9fe0b8 !important;
-        font-weight: 700;
-    }
     </style>
     <div class="pd-table-wrap">
     <table class="pd-table">
@@ -119,7 +111,7 @@ def render(df):
             html += f"<th>{month}</th>"
     html += "</tr></thead><tbody>"
 
-    SUBTOTAL_ROW_CLASS = {"PB": "subtotal-row-pb", "NB": "subtotal-row-nb"}
+    GROUP_CELL_CLASS = {"PB": "group-cell-pb", "NB": "group-cell-nb"}
 
     last_emitted_group = None
     for b in blocks:
@@ -130,15 +122,12 @@ def render(df):
         n_rows = len(metric_names)
 
         for i, metric in enumerate(metric_names):
-            row_class = ""
-            if is_all:
-                row_class = ' class="all-row"'
-            elif is_subtotal:
-                row_class = f' class="{SUBTOTAL_ROW_CLASS.get(b["group"], "subtotal-row")}"'
+            row_class = ' class="all-row"' if is_all else ""
             html += f"<tr{row_class}>"
 
             if b["group"] != last_emitted_group:
-                html += f'<td rowspan="{group_rowcount[b["group"]]}" class="group-cell">{b["group"]}</td>'
+                cat_cls = "group-cell" if is_all else GROUP_CELL_CLASS.get(b["group"], "group-cell")
+                html += f'<td rowspan="{group_rowcount[b["group"]]}" class="{cat_cls}">{b["group"]}</td>'
                 last_emitted_group = b["group"]
 
             if i == 0:
@@ -203,10 +192,15 @@ def render(df):
             </style>
             <div class="pdd-table-wrap">
             <table class="pdd-table">
-            <thead><tr><th>진행상품</th><th>매출</th><th>GP</th>
+            <thead>
+            <tr>
+            <th rowspan="2">진행상품</th><th rowspan="2">매출</th><th rowspan="2">GP</th>
             """
             for m in table_months:
-                detail_html += f"<th>{m} 매출</th><th>{m} GP</th>"
+                detail_html += f'<th colspan="2">{m}</th>'
+            detail_html += "</tr><tr>"
+            for m in table_months:
+                detail_html += "<th>매출</th><th>GP</th>"
             detail_html += "</tr></thead><tbody>"
             for r in product_rows:
                 detail_html += f'<tr><td class="name-cell">{r["진행상품"]}</td>'
@@ -282,10 +276,6 @@ def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
                 cell = ws.cell(row=row, column=c, value=val)
                 if is_all:
                     xx.style_allrow(cell, number_format=xx.MONEY_FMT)
-                elif is_subtotal and b["group"] == "PB":
-                    xx.style_subtotal_pb(cell, number_format=xx.MONEY_FMT)
-                elif is_subtotal and b["group"] == "NB":
-                    xx.style_subtotal_nb(cell, number_format=xx.MONEY_FMT)
                 elif c == 4:
                     xx.style_total(cell, number_format=xx.MONEY_FMT)
                 else:
@@ -295,12 +285,6 @@ def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
                 cell = ws.cell(row=row, column=c)
                 if is_all:
                     xx.style_allrow(cell)
-                elif is_subtotal and b["group"] == "PB":
-                    xx.style_subtotal_pb(cell)
-                elif is_subtotal and b["group"] == "NB":
-                    xx.style_subtotal_nb(cell)
-                elif is_subtotal:
-                    xx.style_total(cell)
                 else:
                     xx.style_plain(cell)
             row += 1
@@ -318,6 +302,10 @@ def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
             cell = ws.cell(row=r, column=1)
             if is_all:
                 xx.style_allrow(cell)
+            elif group == "PB":
+                xx.style_group_pb(cell)
+            elif group == "NB":
+                xx.style_group_nb(cell)
             else:
                 xx.style_group(cell)
 
