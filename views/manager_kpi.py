@@ -1,12 +1,12 @@
-import io
 import streamlit as st
 import numpy as np
-import pandas as pd
+from openpyxl import Workbook
 
 from data_utils import (
     get_managers, get_active_months, build_manager_actuals,
     load_manager_kpi_targets, MONTH_ORDER, QUARTER_MAP,
 )
+import excel_export as xx
 
 
 def _fmt_money(v):
@@ -182,24 +182,98 @@ def render(df):
     st.markdown(html, unsafe_allow_html=True)
 
     # ---- 엑셀 다운로드 ----
-    export_rows = []
-    for gname, rows in groups:
-        for metric in METRICS:
-            row_dict = {"담당자": gname, "구분": metric}
-            for c in COLS:
-                v = rows[metric][c]
-                if "달성률" in metric:
-                    row_dict[c] = None if (v is None or (isinstance(v, float) and np.isnan(v))) else round(v * 100, 2)
-                else:
-                    row_dict[c] = None if (v is None or (isinstance(v, float) and np.isnan(v))) else round(v)
-            export_rows.append(row_dict)
-    export_df = pd.DataFrame(export_rows)
-
-    buf = io.BytesIO()
-    export_df.to_excel(buf, index=False, sheet_name="매니저별")
+    excel_bytes = _build_excel(groups, COLS, quarter_groups, METRICS)
     st.download_button(
         "📥 엑셀로 다운로드",
-        data=buf.getvalue(),
+        data=excel_bytes,
         file_name="매니저별_진척현황.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+def _build_excel(groups, COLS, quarter_groups, METRICS) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "매니저별"
+
+    # 헤더 (2행): 담당자/구분/합계는 세로 병합, 분기는 가로 병합
+    r1, r2 = 1, 2
+    xx.style_header(ws.cell(row=r1, column=1, value="담당자"))
+    xx.style_header(ws.cell(row=r1, column=2, value="구분"))
+    xx.style_header(ws.cell(row=r1, column=3, value="합계"))
+    ws.merge_cells(start_row=r1, start_column=1, end_row=r2, end_column=1)
+    ws.merge_cells(start_row=r1, start_column=2, end_row=r2, end_column=2)
+    ws.merge_cells(start_row=r1, start_column=3, end_row=r2, end_column=3)
+    for r in (r1, r2):
+        for c in (1, 2, 3):
+            xx.style_header(ws.cell(row=r, column=c))
+    ws.cell(row=r1, column=1, value="담당자")
+    ws.cell(row=r1, column=2, value="구분")
+    ws.cell(row=r1, column=3, value="합계")
+
+    col = 4
+    month_col_map = {}
+    for q, months_in_q in quarter_groups:
+        start_col = col
+        for m in months_in_q:
+            xx.style_header(ws.cell(row=r2, column=col, value=m))
+            month_col_map[m] = col
+            col += 1
+        end_col = col - 1
+        xx.style_header(ws.cell(row=r1, column=start_col, value=q))
+        if end_col > start_col:
+            ws.merge_cells(start_row=r1, start_column=start_col, end_row=r1, end_column=end_col)
+            for c in range(start_col, end_col + 1):
+                xx.style_header(ws.cell(row=r1, column=c))
+
+    col_to_key = {3: "합계"}
+    col_to_key.update({v: k for k, v in month_col_map.items()})
+    last_col = col - 1
+
+    row = 3
+    for gname, rows in groups:
+        is_total = (gname == "부서 총합")
+        start_row = row
+        for metric in METRICS:
+            name_cell = ws.cell(row=row, column=1, value=gname if row == start_row else None)
+            ws.cell(row=row, column=2, value=metric)
+            for c in range(3, last_col + 1):
+                key = col_to_key[c]
+                v = rows[metric][key]
+                is_pct = "달성률" in metric
+                if v is None or (isinstance(v, float) and np.isnan(v)):
+                    val = None
+                else:
+                    val = float(v) if is_pct else round(v)
+                fmt = xx.PCT_FMT if is_pct else xx.MONEY_FMT
+                cell = ws.cell(row=row, column=c, value=val)
+                if is_total:
+                    xx.style_allrow(cell, number_format=fmt)
+                elif c == 3:
+                    xx.style_total(cell, number_format=fmt)
+                else:
+                    xx.style_plain(cell, number_format=fmt)
+
+            if is_total:
+                xx.style_allrow(ws.cell(row=row, column=2))
+            else:
+                xx.style_label(ws.cell(row=row, column=2))
+            row += 1
+
+        cell1 = ws.cell(row=start_row, column=1)
+        if is_total:
+            xx.style_allrow(cell1)
+        else:
+            xx.style_group(cell1)
+        if len(METRICS) > 1:
+            ws.merge_cells(start_row=start_row, start_column=1, end_row=start_row + len(METRICS) - 1, end_column=1)
+            for r in range(start_row, start_row + len(METRICS)):
+                c = ws.cell(row=r, column=1)
+                if is_total:
+                    xx.style_allrow(c)
+                else:
+                    xx.style_group(c)
+
+    xx.autosize(ws)
+    xx.freeze_header(ws, row=2, col=3)
+    return xx.to_bytes(wb)
