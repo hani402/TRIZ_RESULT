@@ -7,7 +7,7 @@ from data_utils import build_sales_kpi, get_active_months, MONTH_ORDER
 
 
 def render(df):
-    st.title("📊 영업 지표 (월별 전체 실적)")
+    st.title("📊 영업 지표")
 
     if df is None:
         st.info("왼쪽 사이드바에서 ALL데이터 엑셀 파일을 업로드하면 결과가 표시됩니다.")
@@ -36,10 +36,10 @@ def render(df):
     table_html = """
     <style>
     .kpi-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .kpi-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    .kpi-table { border-collapse: collapse; width: 100%; font-size: 16px; }
     .kpi-table th, .kpi-table td {
         text-align: center !important;
-        padding: 10px 12px;
+        padding: 12px 14px;
         border: 1px solid #d9dce3;
         color: #1f2937 !important;
         white-space: nowrap;
