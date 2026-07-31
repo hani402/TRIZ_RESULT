@@ -1,6 +1,8 @@
 import streamlit as st
+from openpyxl import Workbook
 
 from data_utils import build_transaction_view, get_active_months, QUARTER_MAP, MONTH_ORDER
+import excel_export as xx
 
 
 def _fmt_money(v):
@@ -28,8 +30,20 @@ def render(df):
 
     blocks = build_transaction_view(df, active_months)
 
-    month_choice = st.selectbox("표시할 월", ["전체"] + active_months, key="transaction_month_filter")
+    def _block_label(b):
+        return f"{b['category']} - {b['sub']}" if b["sub"] else b["category"]
+
+    options = [_block_label(b) for b in blocks if b["category"] != "ALL"]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        category_choice = st.selectbox("구분 선택 (ALL은 항상 표시돼요)", ["전체"] + options, key="transaction_category_filter")
+    with col2:
+        month_choice = st.selectbox("표시할 월", ["전체"] + active_months, key="transaction_month_filter")
     table_months = active_months if month_choice == "전체" else [month_choice]
+
+    if category_choice != "전체":
+        blocks = [b for b in blocks if b["category"] == "ALL" or _block_label(b) == category_choice]
 
     COLS = ["합계"] + table_months
     quarter_groups = []
@@ -133,3 +147,112 @@ def render(df):
     html += "</tbody></table></div>"
 
     st.markdown(html, unsafe_allow_html=True)
+
+    excel_bytes = _build_excel(blocks, COLS, quarter_groups, category_rowcount)
+    st.download_button(
+        "📥 엑셀로 다운로드",
+        data=excel_bytes,
+        file_name="거래별.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _build_excel(blocks, COLS, quarter_groups, category_rowcount) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "거래별"
+
+    r1, r2 = 1, 2
+    headers = ["다이렉트/벤더", "세부", "인원수", "지표", "합계"]
+    for c, text in enumerate(headers, start=1):
+        ws.merge_cells(start_row=r1, start_column=c, end_row=r2, end_column=c)
+        ws.cell(row=r1, column=c, value=text)
+        for r in (r1, r2):
+            xx.style_header(ws.cell(row=r, column=c))
+
+    col = 6
+    month_col_map = {}
+    for q, months_in_q in quarter_groups:
+        start_col = col
+        for m in months_in_q:
+            xx.style_header(ws.cell(row=r2, column=col, value=m))
+            month_col_map[m] = col
+            col += 1
+        end_col = col - 1
+        xx.style_header(ws.cell(row=r1, column=start_col, value=q))
+        if end_col > start_col:
+            ws.merge_cells(start_row=r1, start_column=start_col, end_row=r1, end_column=end_col)
+            for c in range(start_col, end_col + 1):
+                xx.style_header(ws.cell(row=r1, column=c))
+
+    col_to_key = {5: "합계"}
+    col_to_key.update({v: k for k, v in month_col_map.items()})
+    last_col = col - 1
+
+    row = 3
+    last_emitted_category = None
+    category_start_row = {}
+    for b in blocks:
+        is_all = b["category"] == "ALL"
+        metrics = b["metrics"]
+        metric_names = list(metrics.keys())
+        n_rows = len(metric_names)
+
+        if b["category"] != last_emitted_category:
+            category_start_row[b["category"]] = row
+            last_emitted_category = b["category"]
+
+        for i, metric in enumerate(metric_names):
+            if i == 0:
+                sub_text = b["sub"] if b["sub"] else "-"
+                ws.cell(row=row, column=2, value=sub_text)
+                ws.cell(row=row, column=3, value=f'{b["headcount"]}명')
+                if n_rows > 1:
+                    ws.merge_cells(start_row=row, start_column=2, end_row=row + n_rows - 1, end_column=2)
+                    ws.merge_cells(start_row=row, start_column=3, end_row=row + n_rows - 1, end_column=3)
+
+            ws.cell(row=row, column=4, value=metric)
+
+            row_vals = metrics[metric]
+            for c in range(5, last_col + 1):
+                key = col_to_key[c]
+                v = row_vals.get(key)
+                fmt = xx.INT_FMT if metric == "진행 횟수" else xx.MONEY_FMT
+                val = int(v) if (metric == "진행 횟수" and v is not None) else (round(v) if v is not None else None)
+                cell = ws.cell(row=row, column=c, value=val)
+                if is_all:
+                    xx.style_allrow(cell, number_format=fmt)
+                elif c == 5:
+                    xx.style_total(cell, number_format=fmt)
+                else:
+                    xx.style_plain(cell, number_format=fmt)
+
+            for c in (2, 3, 4):
+                cell = ws.cell(row=row, column=c)
+                if is_all:
+                    xx.style_allrow(cell)
+                else:
+                    xx.style_label(cell)
+            row += 1
+
+
+    # 카테고리(다이렉트/벤더) 세로 병합
+    for category, total_rows in category_rowcount.items():
+        start = category_start_row.get(category)
+        if start is None:
+            continue
+        end = start + total_rows - 1
+        ws.cell(row=start, column=1, value=category)
+        if end > start:
+            ws.merge_cells(start_row=start, start_column=1, end_row=end, end_column=1)
+        is_all = (category == "ALL")
+        for r in range(start, end + 1):
+            cell = ws.cell(row=r, column=1)
+            if is_all:
+                xx.style_allrow(cell)
+            else:
+                xx.style_group(cell)
+
+    xx.autosize(ws)
+    xx.freeze_header(ws, row=2, col=5)
+    return xx.to_bytes(wb)
