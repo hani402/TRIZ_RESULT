@@ -1,9 +1,9 @@
 import streamlit as st
-import pandas as pd
-import io
 from plotly.subplots import make_subplots
+from openpyxl import Workbook
 
 from data_utils import build_sales_kpi, get_active_months, MONTH_ORDER
+import excel_export as xx
 
 
 def render(df):
@@ -104,11 +104,52 @@ def render(df):
 
     # ---- 다운로드 ----
     st.subheader("엑셀로 다운로드")
-    buf = io.BytesIO()
-    kpi.to_excel(buf, sheet_name="영업 지표")
+    excel_bytes = _build_excel(kpi, table_months)
     st.download_button(
         "영업 지표.xlsx 다운로드",
-        data=buf.getvalue(),
+        data=excel_bytes,
         file_name="영업_지표.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+
+def _build_excel(kpi, table_months) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "영업 지표"
+
+    cols = ["ALL"] + table_months
+    header_row = 1
+
+    xx.style_header(ws.cell(row=header_row, column=1, value="구분"))
+    for j, col in enumerate(cols, start=2):
+        xx.style_header(ws.cell(row=header_row, column=j, value=col))
+
+    metrics = ["진행 건수", "매출 결과", "GP 결과"]
+    row_idx = {}
+    for i, metric in enumerate(metrics, start=2):
+        row_idx[metric] = i
+        xx.style_label(ws.cell(row=i, column=1, value=metric))
+        for j, col in enumerate(cols, start=2):
+            v = kpi.loc[metric, col]
+            fmt = xx.INT_FMT if metric == "진행 건수" else xx.MONEY_FMT
+            cell = ws.cell(row=i, column=j, value=(int(v) if v is not None else None))
+            if col == "ALL":
+                xx.style_total(cell, number_format=fmt)
+            else:
+                xx.style_plain(cell, number_format=fmt)
+
+    xx.autosize(ws)
+    xx.freeze_header(ws, row=1, col=1)
+
+    # 차트는 실제 월이 2개 이상 있을 때만 의미가 있어 추가
+    if len(table_months) >= 1:
+        first_col = 3  # ALL 다음 첫 월 컬럼
+        last_col = 2 + len(table_months)
+        xx.add_sales_kpi_chart(
+            ws, header_row=header_row, first_data_col=first_col, last_data_col=last_col,
+            rev_row=row_idx["매출 결과"], gp_row=row_idx["GP 결과"], count_row=row_idx["진행 건수"],
+            anchor=f"A{len(metrics) + 4}",
+        )
+
+    return xx.to_bytes(wb)
