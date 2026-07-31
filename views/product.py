@@ -1,6 +1,8 @@
 import streamlit as st
+from openpyxl import Workbook
 
 from data_utils import build_product_view, get_active_months, QUARTER_MAP, MONTH_ORDER
+import excel_export as xx
 
 
 def _fmt_money(v):
@@ -20,10 +22,22 @@ def render(df):
     if len(active_months) < len(MONTH_ORDER):
         st.caption(f"결산 데이터가 있는 월({', '.join(active_months)})만 표시하고 있어요.")
 
-    month_choice = st.selectbox("표시할 월", ["전체"] + active_months, key="product_month_filter")
+    blocks = build_product_view(df, active_months)
+
+    def _block_label(b):
+        return f"{b['group']} - {b['sub']}" if b["sub"] else b["group"]
+
+    options = [_block_label(b) for b in blocks if b["group"] != "ALL"]
+
+    col1, col2 = st.columns(2)
+    with col1:
+        group_choice = st.selectbox("구분 선택 (ALL은 항상 표시돼요)", ["전체"] + options, key="product_group_filter")
+    with col2:
+        month_choice = st.selectbox("표시할 월", ["전체"] + active_months, key="product_month_filter")
     table_months = active_months if month_choice == "전체" else [month_choice]
 
-    blocks = build_product_view(df, active_months)
+    if group_choice != "전체":
+        blocks = [b for b in blocks if b["group"] == "ALL" or _block_label(b) == group_choice]
 
     COLS = ["합계"] + table_months
     quarter_groups = []
@@ -126,3 +140,109 @@ def render(df):
     html += "</tbody></table></div>"
 
     st.markdown(html, unsafe_allow_html=True)
+
+    excel_bytes = _build_excel(blocks, COLS, quarter_groups, group_rowcount)
+    st.download_button(
+        "📥 엑셀로 다운로드",
+        data=excel_bytes,
+        file_name="상품별.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+
+def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "상품별"
+
+    r1, r2 = 1, 2
+    headers = ["구분", "카테고리", "지표", "합계"]
+    for c, text in enumerate(headers, start=1):
+        ws.merge_cells(start_row=r1, start_column=c, end_row=r2, end_column=c)
+        xx.style_header(ws.cell(row=r1, column=c, value=text))
+        xx.style_header(ws.cell(row=r2, column=c))
+
+    col = 5
+    month_col_map = {}
+    for q, months_in_q in quarter_groups:
+        start_col = col
+        for m in months_in_q:
+            xx.style_header(ws.cell(row=r2, column=col, value=m))
+            month_col_map[m] = col
+            col += 1
+        end_col = col - 1
+        xx.style_header(ws.cell(row=r1, column=start_col, value=q))
+        if end_col > start_col:
+            ws.merge_cells(start_row=r1, start_column=start_col, end_row=r1, end_column=end_col)
+            for c in range(start_col, end_col + 1):
+                xx.style_header(ws.cell(row=r1, column=c))
+
+    col_to_key = {4: "합계"}
+    col_to_key.update({v: k for k, v in month_col_map.items()})
+    last_col = col - 1
+
+    row = 3
+    last_emitted_group = None
+    group_start_row = {}
+    for b in blocks:
+        is_all = b["group"] == "ALL"
+        is_subtotal = b["sub"] == "소계"
+        metrics = b["metrics"]
+        metric_names = list(metrics.keys())
+        n_rows = len(metric_names)
+
+        if b["group"] != last_emitted_group:
+            group_start_row[b["group"]] = row
+            last_emitted_group = b["group"]
+
+        for i, metric in enumerate(metric_names):
+            if i == 0:
+                sub_text = b["sub"] if b["sub"] else "-"
+                ws.cell(row=row, column=2, value=sub_text)
+                if n_rows > 1:
+                    ws.merge_cells(start_row=row, start_column=2, end_row=row + n_rows - 1, end_column=2)
+
+            ws.cell(row=row, column=3, value=metric)
+
+            row_vals = metrics[metric]
+            for c in range(4, last_col + 1):
+                key = col_to_key[c]
+                v = row_vals.get(key)
+                val = round(v) if v is not None else None
+                cell = ws.cell(row=row, column=c, value=val)
+                if is_all:
+                    xx.style_allrow(cell, number_format=xx.MONEY_FMT)
+                elif c == 4:
+                    xx.style_total(cell, number_format=xx.MONEY_FMT)
+                else:
+                    xx.style_plain(cell, number_format=xx.MONEY_FMT)
+
+            for c in (2, 3):
+                cell = ws.cell(row=row, column=c)
+                if is_all:
+                    xx.style_allrow(cell)
+                elif is_subtotal:
+                    xx.style_total(cell)
+                else:
+                    xx.style_label(cell)
+            row += 1
+
+    for group, total_rows in group_rowcount.items():
+        start = group_start_row.get(group)
+        if start is None:
+            continue
+        end = start + total_rows - 1
+        ws.cell(row=start, column=1, value=group)
+        if end > start:
+            ws.merge_cells(start_row=start, start_column=1, end_row=end, end_column=1)
+        is_all = (group == "ALL")
+        for r in range(start, end + 1):
+            cell = ws.cell(row=r, column=1)
+            if is_all:
+                xx.style_allrow(cell)
+            else:
+                xx.style_group(cell)
+
+    xx.autosize(ws)
+    xx.freeze_header(ws, row=2, col=4)
+    return xx.to_bytes(wb)
