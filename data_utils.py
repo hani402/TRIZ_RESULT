@@ -120,8 +120,7 @@ def build_manager_actuals(df: pd.DataFrame, managers: list) -> pd.DataFrame:
     return result
 
 
-TOP_CATEGORIES_NO_COUNT = ["PA", "기타"]  # 진행 횟수 집계에서 제외 (매출/GP만 표시)
-TOP_CATEGORIES_WITH_COUNT = ["글로벌 소싱", "셀러"]  # 진행 횟수 포함
+TOP_CATEGORIES_NO_COUNT = ["PA", "기타"]  # 진행 횟수 집계에서 제외 (매출/GP만 표시, 업무 규칙상 고정)
 
 
 def _metrics_for_mask(df: pd.DataFrame, mask, months: list, include_count: bool) -> dict:
@@ -146,13 +145,17 @@ def _metrics_for_mask(df: pd.DataFrame, mask, months: list, include_count: bool)
 
 def build_transaction_view(df: pd.DataFrame, months: list) -> list:
     """다이렉트/벤더 구분별 진행 횟수·매출·GP 결과. 벤더사는 세부 벤더사별로 하위 전개.
+    현재 데이터에 실제로 등록된 구분만 표시한다 (예: 글로벌 소싱처럼 값이 없는 구분은 자동으로 생략).
     반환: [{"category":.., "sub":.., "headcount":.., "metrics": {...}}, ...] (ALL 총계 포함)"""
     d_col = df["다이렉트/벤더"].astype(str).str.strip()
+    existing_categories = set(d_col.dropna().unique().tolist())
 
     blocks = []
     headcounts = {}
 
     for cat in TOP_CATEGORIES_NO_COUNT:
+        if cat not in existing_categories:
+            continue
         mask = d_col == cat
         headcount = df.loc[mask, "셀러명"].nunique()
         headcounts[cat] = headcount
@@ -161,7 +164,12 @@ def build_transaction_view(df: pd.DataFrame, months: list) -> list:
             "metrics": _metrics_for_mask(df, mask, months, include_count=False),
         })
 
-    for cat in TOP_CATEGORIES_WITH_COUNT:
+    # PA/기타/벤더사가 아닌 나머지 구분 전부 (예: 셀러, 향후 새로 생기는 구분도 자동 반영)
+    other_categories = sorted(
+        [c for c in existing_categories if c not in TOP_CATEGORIES_NO_COUNT and not c.startswith("벤더사")],
+        key=lambda c: -df.loc[d_col == c, "셀러명"].nunique(),
+    )
+    for cat in other_categories:
         mask = d_col == cat
         headcount = df.loc[mask, "셀러명"].nunique()
         headcounts[cat] = headcount
@@ -170,27 +178,28 @@ def build_transaction_view(df: pd.DataFrame, months: list) -> list:
             "metrics": _metrics_for_mask(df, mask, months, include_count=True),
         })
 
-    # 벤더사 (전체 요약 + 세부 벤더사별)
+    # 벤더사 (전체 요약 + 세부 벤더사별, 새 벤더사가 데이터에 생기면 자동으로 추가됨)
     vendor_mask_all = d_col.str.startswith("벤더사")
     vendor_names = sorted(
         d_col[vendor_mask_all].unique().tolist(),
         key=lambda name: -df.loc[d_col == name, "셀러명"].nunique(),
     )
-    vendor_headcount_total = df.loc[vendor_mask_all, "셀러명"].nunique()
-    headcounts["벤더사"] = vendor_headcount_total
+    if vendor_names:
+        vendor_headcount_total = df.loc[vendor_mask_all, "셀러명"].nunique()
+        headcounts["벤더사"] = vendor_headcount_total
 
-    blocks.append({
-        "category": "벤더사", "sub": f"전체 ({len(vendor_names)}개사)", "headcount": vendor_headcount_total,
-        "metrics": _metrics_for_mask(df, vendor_mask_all, months, include_count=True),
-    })
-    for name in vendor_names:
-        mask = d_col == name
-        headcount = df.loc[mask, "셀러명"].nunique()
-        short_name = name.replace("벤더사 (", "").rstrip(")")
         blocks.append({
-            "category": "벤더사", "sub": short_name, "headcount": headcount,
-            "metrics": _metrics_for_mask(df, mask, months, include_count=True),
+            "category": "벤더사", "sub": f"전체 ({len(vendor_names)}개사)", "headcount": vendor_headcount_total,
+            "metrics": _metrics_for_mask(df, vendor_mask_all, months, include_count=True),
         })
+        for name in vendor_names:
+            mask = d_col == name
+            headcount = df.loc[mask, "셀러명"].nunique()
+            short_name = name.replace("벤더사 (", "").rstrip(")")
+            blocks.append({
+                "category": "벤더사", "sub": short_name, "headcount": headcount,
+                "metrics": _metrics_for_mask(df, mask, months, include_count=True),
+            })
 
     # ALL 총계 (매출/GP는 전체 데이터 기준, 진행 횟수는 기타/PA 제외, 인원수는 셀러+벤더사 합)
     all_mask = pd.Series(True, index=df.index)
