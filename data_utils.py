@@ -202,7 +202,8 @@ def build_transaction_view(df: pd.DataFrame, months: list) -> list:
     all_metrics = {"진행 횟수": count_row, **all_metrics}
     all_headcount = headcounts.get("셀러", 0) + headcounts.get("벤더사", 0)
 
-    blocks.append({"category": "ALL", "sub": None, "headcount": all_headcount, "metrics": all_metrics})
+    all_block = {"category": "ALL", "sub": None, "headcount": all_headcount, "metrics": all_metrics}
+    blocks.insert(0, all_block)
 
     return blocks
 
