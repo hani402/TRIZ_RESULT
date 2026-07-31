@@ -22,7 +22,10 @@ def render(df):
 
     # ---- 표 ----
     st.subheader("월별 집계표")
-    display_cols = ["ALL"] + active_months
+    month_choice = st.selectbox("표시할 월", ["전체"] + active_months, key="sales_kpi_month_filter")
+    table_months = active_months if month_choice == "전체" else [month_choice]
+
+    display_cols = ["ALL"] + table_months
     display = kpi[display_cols].copy()
     for col in display.columns:
         display[col] = display.apply(
@@ -32,12 +35,14 @@ def render(df):
 
     table_html = """
     <style>
+    .kpi-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     .kpi-table { border-collapse: collapse; width: 100%; font-size: 14px; }
     .kpi-table th, .kpi-table td {
         text-align: center !important;
         padding: 10px 12px;
         border: 1px solid #d9dce3;
         color: #1f2937 !important;
+        white-space: nowrap;
     }
     .kpi-table thead th {
         background-color: #1f2a44 !important;
@@ -58,6 +63,7 @@ def render(df):
         font-weight: 700;
     }
     </style>
+    <div class="kpi-table-wrap">
     <table class="kpi-table">
     <thead><tr><th>구분</th>"""
     for col in display.columns:
@@ -69,7 +75,7 @@ def render(df):
             cls = ' class="all-col"' if col == "ALL" else ""
             table_html += f"<td{cls}>{row[col]}</td>"
         table_html += "</tr>"
-    table_html += "</tbody></table>"
+    table_html += "</tbody></table></div>"
 
     st.markdown(table_html, unsafe_allow_html=True)
 
