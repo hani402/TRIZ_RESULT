@@ -70,6 +70,16 @@ def render(df):
         background-color: #e4e8f5 !important;
         font-weight: 700;
     }
+    .pd-table td.group-cell-pb {
+        background-color: #cfe3ff !important;
+        color: #1e40af !important;
+        font-weight: 700;
+    }
+    .pd-table td.group-cell-nb {
+        background-color: #cdf0da !important;
+        color: #166534 !important;
+        font-weight: 700;
+    }
     .pd-table td.sub-cell {
         background-color: #f3f4f8 !important;
         font-weight: 600;
@@ -85,8 +95,12 @@ def render(df):
         background-color: #fdf3e0 !important;
         font-weight: 700;
     }
-    .pd-table tr.subtotal-row td {
-        background-color: #eef2ff !important;
+    .pd-table tr.subtotal-row-pb td {
+        background-color: #a9cbff !important;
+        font-weight: 700;
+    }
+    .pd-table tr.subtotal-row-nb td {
+        background-color: #9fe0b8 !important;
         font-weight: 700;
     }
     </style>
@@ -104,6 +118,9 @@ def render(df):
             html += f"<th>{month}</th>"
     html += "</tr></thead><tbody>"
 
+    GROUP_CELL_CLASS = {"PB": "group-cell-pb", "NB": "group-cell-nb"}
+    SUBTOTAL_ROW_CLASS = {"PB": "subtotal-row-pb", "NB": "subtotal-row-nb"}
+
     last_emitted_group = None
     for b in blocks:
         is_all = b["group"] == "ALL"
@@ -117,11 +134,12 @@ def render(df):
             if is_all:
                 row_class = ' class="all-row"'
             elif is_subtotal:
-                row_class = ' class="subtotal-row"'
+                row_class = f' class="{SUBTOTAL_ROW_CLASS.get(b["group"], "subtotal-row")}"'
             html += f"<tr{row_class}>"
 
             if b["group"] != last_emitted_group:
-                html += f'<td rowspan="{group_rowcount[b["group"]]}" class="group-cell">{b["group"]}</td>'
+                cat_cls = "group-cell" if is_all else GROUP_CELL_CLASS.get(b["group"], "group-cell")
+                html += f'<td rowspan="{group_rowcount[b["group"]]}" class="{cat_cls}">{b["group"]}</td>'
                 last_emitted_group = b["group"]
 
             if i == 0:
@@ -212,6 +230,10 @@ def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
                 cell = ws.cell(row=row, column=c, value=val)
                 if is_all:
                     xx.style_allrow(cell, number_format=xx.MONEY_FMT)
+                elif is_subtotal and b["group"] == "PB":
+                    xx.style_subtotal_pb(cell, number_format=xx.MONEY_FMT)
+                elif is_subtotal and b["group"] == "NB":
+                    xx.style_subtotal_nb(cell, number_format=xx.MONEY_FMT)
                 elif c == 4:
                     xx.style_total(cell, number_format=xx.MONEY_FMT)
                 else:
@@ -221,6 +243,10 @@ def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
                 cell = ws.cell(row=row, column=c)
                 if is_all:
                     xx.style_allrow(cell)
+                elif is_subtotal and b["group"] == "PB":
+                    xx.style_subtotal_pb(cell)
+                elif is_subtotal and b["group"] == "NB":
+                    xx.style_subtotal_nb(cell)
                 elif is_subtotal:
                     xx.style_total(cell)
                 else:
@@ -240,6 +266,10 @@ def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
             cell = ws.cell(row=r, column=1)
             if is_all:
                 xx.style_allrow(cell)
+            elif group == "PB":
+                xx.style_group_pb(cell)
+            elif group == "NB":
+                xx.style_group_nb(cell)
             else:
                 xx.style_group(cell)
 
