@@ -143,7 +143,78 @@ def _metrics_for_mask(df: pd.DataFrame, mask, months: list, include_count: bool)
     return metrics
 
 
-def build_transaction_view(df: pd.DataFrame, months: list) -> list:
+def get_products(df: pd.DataFrame) -> list:
+    """ALL데이터의 '진행상품' 고유 목록 (정렬)."""
+    vals = df["진행상품"].dropna().astype(str).str.strip()
+    vals = vals[vals != ""]
+    return sorted(vals.unique().tolist())
+
+
+def build_seller_view(df: pd.DataFrame, months: list, product: str = None) -> list:
+    """셀러별 매출/GP 집계. product가 지정되면 해당 진행상품으로 필터링.
+    반환: 매출 합계 기준 내림차순 정렬된 딕셔너리 리스트."""
+    d = df if not product or product == "전체" else df[df["진행상품"].astype(str).str.strip() == product]
+
+    grand_rev = d["매출"].sum()
+    grand_gp = d["트리즈GP"].sum()
+
+    rows = []
+    for seller, g in d.groupby("셀러명"):
+        if seller is None or (isinstance(seller, float) and pd.isna(seller)):
+            continue
+        rev = g["매출"].sum()
+        gp = g["트리즈GP"].sum()
+        cnt = len(g)
+
+        def _mode_or_first(series):
+            m = series.mode()
+            return m.iat[0] if not m.empty else (series.iloc[0] if len(series) else "")
+
+        row = {
+            "셀러명": seller,
+            "비전속": _mode_or_first(g["비전속"]),
+            "다이렉트/벤더": _mode_or_first(g["다이렉트/벤더"]),
+            "매출비중": (rev / grand_rev) if grand_rev else None,
+            "GP비중": (gp / grand_gp) if grand_gp else None,
+            "매출": rev,
+            "평균매출": (rev / cnt) if cnt else None,
+            "GP": gp,
+            "평균GP": (gp / cnt) if cnt else None,
+        }
+        for m in months:
+            sub = g[g["월"] == m]
+            row[f"{m}_매출"] = sub["매출"].sum()
+            row[f"{m}_GP"] = sub["트리즈GP"].sum()
+        rows.append(row)
+
+    rows.sort(key=lambda r: -(r["매출"] or 0))
+    return rows
+
+
+PRODUCT_CATEGORIES = [
+    "뷰티 디바이스", "건기식", "뷰티", "식품", "리빙",
+    "패션/잡화", "이너뷰티", "서비스", "기타(샘플,CS 등)",
+]
+
+
+def build_product_view(df: pd.DataFrame, months: list) -> list:
+    """PB/NB > 카테고리별 매출/GP 집계 (고정된 카테고리 체계 기준, ALL 총계를 맨 위에 둠)."""
+    pbnb_col = df["PB/NB"].astype(str).str.strip()
+    cat_col = df["카테고리"].astype(str).str.strip()
+
+    blocks = []
+
+    all_mask = pbnb_col.isin(["NB", "PB"])
+    blocks.append({"group": "ALL", "sub": None, "metrics": _metrics_for_mask(df, all_mask, months, include_count=False)})
+
+    for pbnb in ["NB", "PB"]:
+        group_mask = pbnb_col == pbnb
+        blocks.append({"group": pbnb, "sub": "소계", "metrics": _metrics_for_mask(df, group_mask, months, include_count=False)})
+        for cat in PRODUCT_CATEGORIES:
+            mask = group_mask & (cat_col == cat)
+            blocks.append({"group": pbnb, "sub": cat, "metrics": _metrics_for_mask(df, mask, months, include_count=False)})
+
+    return blocks
     """다이렉트/벤더 구분별 진행 횟수·매출·GP 결과. 벤더사는 세부 벤더사별로 하위 전개.
     현재 데이터에 실제로 등록된 구분만 표시한다 (예: 글로벌 소싱처럼 값이 없는 구분은 자동으로 생략).
     반환: [{"category":.., "sub":.., "headcount":.., "metrics": {...}}, ...] (ALL 총계 포함)"""
