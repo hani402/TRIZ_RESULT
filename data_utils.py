@@ -207,7 +207,7 @@ def build_product_view(df: pd.DataFrame, months: list) -> list:
     all_mask = pbnb_col.isin(["NB", "PB"])
     blocks.append({"group": "ALL", "sub": None, "metrics": _metrics_for_mask(df, all_mask, months, include_count=False)})
 
-    for pbnb in ["NB", "PB"]:
+    for pbnb in ["PB", "NB"]:
         group_mask = pbnb_col == pbnb
         blocks.append({"group": pbnb, "sub": "소계", "metrics": _metrics_for_mask(df, group_mask, months, include_count=False)})
         for cat in PRODUCT_CATEGORIES:
