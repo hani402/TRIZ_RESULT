@@ -1,7 +1,7 @@
 import streamlit as st
 from openpyxl import Workbook
 
-from data_utils import build_product_view, get_active_months, QUARTER_MAP, MONTH_ORDER
+from data_utils import build_product_view, build_category_products, get_active_months, QUARTER_MAP, MONTH_ORDER
 import excel_export as xx
 
 
@@ -27,7 +27,8 @@ def render(df):
     def _block_label(b):
         return f"{b['group']} - {b['sub']}" if b["sub"] else b["group"]
 
-    options = [_block_label(b) for b in blocks if b["group"] != "ALL"]
+    label_to_block = {_block_label(b): b for b in blocks if b["group"] != "ALL"}
+    options = list(label_to_block.keys())
 
     col1, col2 = st.columns(2)
     with col1:
@@ -81,11 +82,11 @@ def render(df):
         font-weight: 700;
     }
     .pd-table td.sub-cell {
-        background-color: #f3f4f8 !important;
+        background-color: #ffffff !important;
         font-weight: 600;
     }
     .pd-table td.metric-cell {
-        background-color: #fafafc !important;
+        background-color: #ffffff !important;
     }
     .pd-table td.total-cell {
         background-color: #eef1fb !important;
@@ -164,6 +165,59 @@ def render(df):
         file_name="상품별.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+    # ---- 선택한 구분(카테고리) 안의 상품별 상세 ----
+    if group_choice != "전체":
+        selected_block = label_to_block[group_choice]
+        product_rows = build_category_products(df, selected_block["group"], selected_block["sub"], table_months)
+
+        st.subheader(f"'{group_choice}' 안의 상품별 매출/GP")
+        if not product_rows:
+            st.caption("해당 구분에 상품 데이터가 없어요.")
+        else:
+            st.caption(f"총 {len(product_rows):,}개 상품 (매출 높은 순 정렬)")
+            detail_html = """
+            <style>
+            .pdd-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            .pdd-table { border-collapse: collapse; width: 100%; font-size: 15px; }
+            .pdd-table th, .pdd-table td {
+                text-align: center !important;
+                padding: 9px 11px;
+                border: 1px solid #d9dce3;
+                color: #1f2937 !important;
+                white-space: nowrap;
+            }
+            .pdd-table thead th {
+                background-color: #1f2a44 !important;
+                color: #ffffff !important;
+                font-weight: 600;
+            }
+            .pdd-table td.name-cell {
+                text-align: left !important;
+                font-weight: 600;
+            }
+            .pdd-table td.total-cell {
+                background-color: #eef1fb !important;
+                font-weight: 700;
+            }
+            </style>
+            <div class="pdd-table-wrap">
+            <table class="pdd-table">
+            <thead><tr><th>진행상품</th><th>매출</th><th>GP</th>
+            """
+            for m in table_months:
+                detail_html += f"<th>{m} 매출</th><th>{m} GP</th>"
+            detail_html += "</tr></thead><tbody>"
+            for r in product_rows:
+                detail_html += f'<tr><td class="name-cell">{r["진행상품"]}</td>'
+                detail_html += f'<td class="total-cell">{_fmt_money(r["매출"])}</td>'
+                detail_html += f'<td class="total-cell">{_fmt_money(r["GP"])}</td>'
+                for m in table_months:
+                    detail_html += f'<td>{_fmt_money(r.get(f"{m}_매출"))}</td>'
+                    detail_html += f'<td>{_fmt_money(r.get(f"{m}_GP"))}</td>'
+                detail_html += "</tr>"
+            detail_html += "</tbody></table></div>"
+            st.markdown(detail_html, unsafe_allow_html=True)
 
 
 def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
@@ -248,7 +302,7 @@ def _build_excel(blocks, COLS, quarter_groups, group_rowcount) -> bytes:
                 elif is_subtotal:
                     xx.style_total(cell)
                 else:
-                    xx.style_label(cell)
+                    xx.style_plain(cell)
             row += 1
 
     for group, total_rows in group_rowcount.items():
