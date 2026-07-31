@@ -191,14 +191,16 @@ def build_seller_view(df: pd.DataFrame, months: list, product: str = None) -> li
     return rows
 
 
-PRODUCT_CATEGORIES = [
+NB_CATEGORIES = [
     "뷰티 디바이스", "건기식", "뷰티", "식품", "리빙",
-    "패션/잡화", "이너뷰티", "서비스", "기타(샘플,CS 등)",
+    "패션/잡화", "이너뷰티", "서비스",
 ]
+PB_CATEGORIES = ["건기식", "뷰티", "이너뷰티"]
+CATEGORIES_BY_GROUP = {"PB": PB_CATEGORIES, "NB": NB_CATEGORIES}
 
 
 def build_product_view(df: pd.DataFrame, months: list) -> list:
-    """PB/NB > 카테고리별 매출/GP 집계 (고정된 카테고리 체계 기준, ALL 총계를 맨 위에 둠)."""
+    """PB/NB > 카테고리별 매출/GP 집계 (고정된 카테고리 체계 기준, PB를 먼저, ALL 총계를 맨 위에 둠)."""
     pbnb_col = df["PB/NB"].astype(str).str.strip()
     cat_col = df["카테고리"].astype(str).str.strip()
 
@@ -210,7 +212,7 @@ def build_product_view(df: pd.DataFrame, months: list) -> list:
     for pbnb in ["PB", "NB"]:
         group_mask = pbnb_col == pbnb
         blocks.append({"group": pbnb, "sub": "소계", "metrics": _metrics_for_mask(df, group_mask, months, include_count=False)})
-        for cat in PRODUCT_CATEGORIES:
+        for cat in CATEGORIES_BY_GROUP[pbnb]:
             mask = group_mask & (cat_col == cat)
             blocks.append({"group": pbnb, "sub": cat, "metrics": _metrics_for_mask(df, mask, months, include_count=False)})
 
