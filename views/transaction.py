@@ -16,7 +16,7 @@ def _fmt_count(v):
 
 
 def render(df):
-    st.title("📑 영업 거래별")
+    st.title("📑 거래별")
 
     if df is None:
         st.info("왼쪽 사이드바에서 ALL데이터 엑셀 파일을 업로드하면 결과가 표시됩니다.")
@@ -47,10 +47,10 @@ def render(df):
     html = """
     <style>
     .tx-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .tx-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .tx-table { border-collapse: collapse; width: 100%; font-size: 15px; }
     .tx-table th, .tx-table td {
         text-align: center !important;
-        padding: 6px 8px;
+        padding: 9px 11px;
         border: 1px solid #d9dce3;
         color: #1f2937 !important;
         white-space: nowrap;
