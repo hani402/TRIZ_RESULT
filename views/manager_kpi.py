@@ -2,7 +2,7 @@ import streamlit as st
 import numpy as np
 
 from data_utils import (
-    load_all_data, get_managers, get_active_months, build_manager_actuals,
+    get_managers, get_active_months, build_manager_actuals,
     load_kpi_targets, save_kpi_targets_to_bytes, MONTH_ORDER, QUARTER_MAP,
 )
 
@@ -25,20 +25,11 @@ def _safe_div(a, b):
     return a / b
 
 
-def render():
+def render(df):
     st.title("🧑‍💼 매니저별 진척관리")
-    st.caption("'ALL데이터' 시트가 포함된 엑셀 파일을 업로드하면 담당자별 실적이 자동으로 집계됩니다.")
 
-    uploaded = st.file_uploader("ALL데이터 엑셀 업로드 (.xlsx)", type=["xlsx"], key="manager_upload")
-
-    if uploaded is None:
-        st.info("파일을 업로드하면 결과가 표시됩니다.")
-        return
-
-    try:
-        df = load_all_data(uploaded)
-    except ValueError as e:
-        st.error(str(e))
+    if df is None:
+        st.info("왼쪽 사이드바에서 ALL데이터 엑셀 파일을 업로드하면 결과가 표시됩니다.")
         return
 
     managers = get_managers(df)
