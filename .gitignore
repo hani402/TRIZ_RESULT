@@ -3,5 +3,5 @@ __pycache__/
 *.pyc
 *.xlsx
 *.xls
-!data/kpi_targets.xlsx
+!data/kpi_manager_targets.xlsx
 .streamlit/secrets.toml
