@@ -1,5 +1,7 @@
+import io
 import streamlit as st
 import numpy as np
+import pandas as pd
 
 from data_utils import (
     get_managers, get_active_months, build_manager_actuals,
@@ -26,7 +28,7 @@ def _safe_div(a, b):
 
 
 def render(df):
-    st.title("🧑‍💼 매니저별 진척관리")
+    st.title("🧑‍💼 매니저별")
 
     if df is None:
         st.info("왼쪽 사이드바에서 ALL데이터 엑셀 파일을 업로드하면 결과가 표시됩니다.")
@@ -60,7 +62,11 @@ def render(df):
     if len(active_months) < len(MONTH_ORDER):
         st.caption(f"결산 데이터가 있는 월({', '.join(active_months)})만 표시하고 있어요. 나머지 월은 데이터가 들어오면 자동으로 나타나요.")
 
-    month_choice = st.selectbox("표시할 월", ["전체"] + active_months, key="manager_kpi_month_filter")
+    col1, col2 = st.columns(2)
+    with col1:
+        manager_choice = st.selectbox("담당자 선택 (총합은 항상 표시돼요)", ["전체"] + managers, key="manager_kpi_manager_filter")
+    with col2:
+        month_choice = st.selectbox("표시할 월", ["전체"] + active_months, key="manager_kpi_month_filter")
     table_months = active_months if month_choice == "전체" else [month_choice]
 
     METRICS = ["매출 KPI", "GP KPI", "매출 결과", "GP 결과", "매출 달성률(%)", "GP 달성률(%)"]
@@ -92,6 +98,9 @@ def render(df):
         gp_row = {c: actuals.loc[(manager, "GP 결과"), c] for c in COLS}
         groups.append((manager, build_group_rows(sales_kpi_row, gp_kpi_row, rev_row, gp_row)))
 
+    if manager_choice != "전체":
+        groups = [g for g in groups if g[0] in ("부서 총합", manager_choice)]
+
     # ---- 분기 헤더 구성 (선택된 월 기준) ----
     quarter_groups = []
     for q in ["1Q", "2Q", "3Q", "4Q"]:
@@ -103,10 +112,10 @@ def render(df):
     html = """
     <style>
     .mgr-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .mgr-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .mgr-table { border-collapse: collapse; width: 100%; font-size: 15px; }
     .mgr-table th, .mgr-table td {
         text-align: center !important;
-        padding: 7px 8px;
+        padding: 10px 12px;
         border: 1px solid #d9dce3;
         color: #1f2937 !important;
         white-space: nowrap;
@@ -114,7 +123,8 @@ def render(df):
     .mgr-table thead th {
         background-color: #1f2a44 !important;
         color: #ffffff !important;
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 15px;
     }
     .mgr-table td.rowlabel {
         background-color: #f3f4f8 !important;
@@ -123,6 +133,7 @@ def render(df):
     .mgr-table td.manager-cell {
         background-color: #e4e8f5 !important;
         font-weight: 700;
+        font-size: 16px;
     }
     .mgr-table td.total-cell {
         background-color: #eef1fb !important;
@@ -169,3 +180,26 @@ def render(df):
     html += "</tbody></table></div>"
 
     st.markdown(html, unsafe_allow_html=True)
+
+    # ---- 엑셀 다운로드 ----
+    export_rows = []
+    for gname, rows in groups:
+        for metric in METRICS:
+            row_dict = {"담당자": gname, "구분": metric}
+            for c in COLS:
+                v = rows[metric][c]
+                if "달성률" in metric:
+                    row_dict[c] = None if (v is None or (isinstance(v, float) and np.isnan(v))) else round(v * 100, 2)
+                else:
+                    row_dict[c] = None if (v is None or (isinstance(v, float) and np.isnan(v))) else round(v)
+            export_rows.append(row_dict)
+    export_df = pd.DataFrame(export_rows)
+
+    buf = io.BytesIO()
+    export_df.to_excel(buf, index=False, sheet_name="매니저별")
+    st.download_button(
+        "📥 엑셀로 다운로드",
+        data=buf.getvalue(),
+        file_name="매니저별_진척현황.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
