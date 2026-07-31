@@ -16,19 +16,11 @@ def _fmt_count(v):
 
 
 def render(df):
-    st.title("📑 영업 거래별 (다이렉트/벤더 구분)")
+    st.title("📑 영업 거래별")
 
     if df is None:
         st.info("왼쪽 사이드바에서 ALL데이터 엑셀 파일을 업로드하면 결과가 표시됩니다.")
         return
-
-    with st.expander("다이렉트 / 벤더 / PA / 기타 구분 설명", expanded=False):
-        st.markdown(
-            "- **다이렉트(셀러)**: 셀러와 우리 회사가 직접 거래한 건\n"
-            "- **벤더사**: 벤더사가 셀러 영업·진행을 대신해줘서 성사된 거래 (벤더사명별로 하위 전개)\n"
-            "- **PA**: 우리 부서에서 운영 중인 인스타 광고\n"
-            "- **기타**: 운영비 등 기타 비용이 발생했을 때 별도로 구분해둔 값"
-        )
 
     active_months = get_active_months(df)
     if len(active_months) < len(MONTH_ORDER):
