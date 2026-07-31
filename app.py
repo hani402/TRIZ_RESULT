@@ -1,9 +1,15 @@
+import os
+import io
 import streamlit as st
 
 from data_utils import load_all_data
 from views import home, sales_kpi, manager_kpi
+import github_sync
 
 st.set_page_config(page_title="영업실 결산 대시보드", page_icon="📈", layout="wide")
+
+CACHE_DIR = "data_cache"
+CACHE_PATH = os.path.join(CACHE_DIR, "last_all_data.xlsx")
 
 st.sidebar.title("메뉴")
 
@@ -11,10 +17,42 @@ st.sidebar.title("메뉴")
 uploaded = st.sidebar.file_uploader("ALL데이터 엑셀 업로드 (.xlsx)", type=["xlsx"])
 if uploaded is not None:
     try:
-        st.session_state["df"] = load_all_data(uploaded)
+        file_bytes = uploaded.getvalue()
+
+        # 로컬 캐시에도 저장 (같은 세션/새로고침 대비)
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        with open(CACHE_PATH, "wb") as f:
+            f.write(file_bytes)
+
+        st.session_state["df"] = load_all_data(io.BytesIO(file_bytes))
         st.session_state["df_filename"] = uploaded.name
+
+        # GitHub에 영구 저장 (설정되어 있는 경우)
+        if github_sync.is_configured():
+            try:
+                github_sync.upload_all_data_bytes(file_bytes, commit_message=f"Update ALL데이터 ({uploaded.name})")
+                st.sidebar.success("GitHub에 영구 저장했어요. 재부팅해도 유지돼요.")
+            except Exception as e:
+                st.sidebar.warning(f"GitHub 저장 중 문제가 있었어요: {e}")
     except ValueError as e:
         st.sidebar.error(str(e))
+
+# ---- 세션에 없으면, 저장된 데이터를 자동으로 복원 ----
+if "df" not in st.session_state:
+    if os.path.exists(CACHE_PATH):
+        try:
+            st.session_state["df"] = load_all_data(CACHE_PATH)
+            st.session_state.setdefault("df_filename", "(이전에 업로드된 파일)")
+        except Exception:
+            pass
+    elif github_sync.is_configured():
+        cached_bytes = github_sync.fetch_all_data_bytes()
+        if cached_bytes:
+            try:
+                st.session_state["df"] = load_all_data(io.BytesIO(cached_bytes))
+                st.session_state.setdefault("df_filename", "(GitHub에 저장된 최신 파일)")
+            except Exception:
+                pass
 
 df = st.session_state.get("df")
 if df is not None:
