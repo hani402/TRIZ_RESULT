@@ -29,7 +29,10 @@ def render(df):
     display = kpi[display_cols].copy()
     for col in display.columns:
         display[col] = display.apply(
-            lambda row: f"{int(row[col]):,}" if row.name == "진행 건수" else f"{int(row[col]):,}원",
+            lambda row: (
+                "-" if int(row[col]) == 0
+                else (f"{int(row[col]):,}" if row.name == "진행 건수" else f"{int(row[col]):,}원")
+            ),
             axis=1,
         )
 
