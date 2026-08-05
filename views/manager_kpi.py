@@ -12,6 +12,8 @@ import excel_export as xx
 def _fmt_money(v):
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return ""
+    if v == 0:
+        return "-"
     return f"{int(round(v)):,}원"
 
 
