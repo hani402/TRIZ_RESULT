@@ -19,9 +19,9 @@ THIN = Side(style="thin", color="D9DCE3")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 CENTER = Alignment(horizontal="center", vertical="center", wrap_text=False)
 
-MONEY_FMT = '#,##0"원"'
+MONEY_FMT = '#,##0"원";-#,##0"원";"-"'
 PCT_FMT = "0.00%"
-INT_FMT = "#,##0"
+INT_FMT = '#,##0;-#,##0;"-"'
 
 
 def _apply(cell, fill=None, font=None, number_format=None):
