@@ -8,6 +8,8 @@ import excel_export as xx
 def _fmt_money(v):
     if v is None:
         return ""
+    if v == 0:
+        return "-"
     return f"{int(round(v)):,}원"
 
 
